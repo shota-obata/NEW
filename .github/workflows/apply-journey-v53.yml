@@ -1,0 +1,31 @@
+name: Apply Journey v5.3
+on:
+  push:
+    paths:
+      - tools/upgrade_journey_v53.py
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply Journey upgrade
+        run: python tools/upgrade_journey_v53.py
+      - name: Validate JavaScript
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('index.html').read_text()
+          Path('/tmp/app.js').write_text(s[s.index('<script>')+8:s.rindex('</script>')])
+          PY
+          node --check /tmp/app.js
+      - name: Commit public version
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add index.html
+          git diff --cached --quiet && exit 0
+          git commit -m "Build deep Journey experience v5.3"
+          git push
