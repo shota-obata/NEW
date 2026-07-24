@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - tools/upgrade_journey_v53.py
+      - .github/workflows/apply-journey-v53.yml
   workflow_dispatch:
 permissions:
   contents: write
