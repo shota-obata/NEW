@@ -1,0 +1,41 @@
+name: Apply Growth OS v5.8 Support
+
+on:
+  push:
+    paths:
+      - .github/workflows/apply-growth-os-v5-8-support.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Attach v5.8 Support UI
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          if 'support-v58.css' not in s:
+              s = s.replace('</head>', '<link rel="stylesheet" href="support-v58.css?v=58">\n</head>', 1)
+          if 'support-v58.js' not in s:
+              s = s.replace('</body>', '<script src="support-v58.js?v=58"></script>\n</body>', 1)
+          s = s.replace('Growth OS v5.7', 'Growth OS v5.8').replace('Growth OS v5.6', 'Growth OS v5.8').replace('Growth OS v5.5', 'Growth OS v5.8')
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit Support redesign
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Redesign Support workspace for v5.8"
+          git push
