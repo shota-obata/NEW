@@ -5,8 +5,8 @@
   const currentCp=()=>{const cps=state?.journey?.checkpoints||[];return cps.find(c=>c.status==='current')||cps.find(c=>c.status!=='done')||cps[0]||null};
   const actor=()=>state.role==='support'?'Support':state.role==='management'?'Management':'Staff';
   const safe=v=>typeof esc==='function'?esc(String(v??'')):String(v??'');
-  const modelRows=()=>Array.isArray(state.modelPlans)?state.modelPlans:Array.isArray(state.models)?state.models:[];
-  const newDraft=()=>{const cp=currentCp(),m=modelRows().slice().sort((a,b)=>String(a.date||'9999').localeCompare(String(b.date||'9999')))[0]||null;return{step:1,modelId:m?.id||'',modelName:m?.name||m?.modelName||'',menu:m?.menu||'',question:state?.issue?.title||cp?.issue||'',hypothesis:'',plan:'',result:'',win:'',gap:'',next:'',minutes:60,evidenceTitle:''}};
+  const modelRows=()=>Array.isArray(state.modelBookings)?state.modelBookings:Array.isArray(state.modelPlans)?state.modelPlans:Array.isArray(state.models)?state.models:[];
+  const newDraft=()=>{const cp=currentCp(),today=new Date().toISOString().slice(0,10),rows=modelRows().filter(x=>!x.date||x.date>=today),m=(rows.length?rows:modelRows()).slice().sort((a,b)=>String(a.date||'9999').localeCompare(String(b.date||'9999'))||String(a.time||'').localeCompare(String(b.time||'')))[0]||null;return{step:1,modelId:m?.id||'',modelName:m?.name||m?.modelName||'',menu:m?.menu||'',question:state?.issue?.title||cp?.issue||'',hypothesis:'',plan:'',result:'',win:'',gap:'',next:'',minutes:60,evidenceTitle:''}};
   state.practiceDraft=state.practiceDraft&&typeof state.practiceDraft==='object'?state.practiceDraft:newDraft();
   const prevRender=render;
   const draft=()=>state.practiceDraft;

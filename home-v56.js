@@ -20,7 +20,7 @@
     return new Intl.DateTimeFormat('ja-JP',{month:'short',day:'numeric',weekday:'short'}).format(d);
   };
   const nextModelsV56=()=>{
-    const rows=Array.isArray(state?.modelPlans)?state.modelPlans:Array.isArray(state?.models)?state.models:[];
+    const rows=Array.isArray(state?.modelBookings)?state.modelBookings:Array.isArray(state?.modelPlans)?state.modelPlans:Array.isArray(state?.models)?state.models:[];
     const today=new Date();today.setHours(0,0,0,0);
     return rows.slice().filter(x=>{
       const raw=x.date||x.startDate||'';
