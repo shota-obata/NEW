@@ -101,7 +101,7 @@
 
   function visionCompletion(profile) {
     const checks = [
-      profile.statement,
+      profile.statement && !profile.statement.includes("設定してください"),
       profile.targetCustomers,
       profile.customerValue,
       profile.technicalIdentity,
@@ -218,13 +218,16 @@
     const requiredHours = checkpoints.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
     const actualHours = checkpoints.reduce((sum, item) => sum + (Number(item.actual) || 0), 0);
     const actual = requiredHours ? Math.min(100, Math.round(actualHours / requiredHours * 100)) : 0;
-    const generated = state.journey?.generatedFrom?.generatedAt
+    const hasGeneratedAt = Boolean(state.journey?.generatedFrom?.generatedAt);
+    const generated = hasGeneratedAt
       ? new Date(state.journey.generatedFrom.generatedAt)
       : new Date();
     const deadline = state.deadline ? new Date(`${state.deadline}T23:59:59`) : null;
     const totalTime = deadline ? Math.max(1, deadline - generated) : 1;
     const elapsed = deadline ? Math.max(0, Math.min(totalTime, Date.now() - generated)) : 0;
-    const planned = deadline ? Math.round(elapsed / totalTime * 100) : Number(state.planned) || 0;
+    const planned = hasGeneratedAt && deadline
+      ? Math.round(elapsed / totalTime * 100)
+      : Math.max(0, Math.min(100, Number(state.planned) || 0));
     const remainingHours = Math.max(0, requiredHours - actualHours);
     const weeks = deadline ? Math.max(1, (deadline - Date.now()) / 604800000) : 1;
     const needPerWeek = remainingHours / weeks;
