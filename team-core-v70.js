@@ -569,7 +569,41 @@
     return result;
   }
 
+  function normalizeAssetImage(image, index, asset) {
+    const source = image && typeof image === "object"
+      ? clone(image)
+      : { src: typeof image === "string" ? image : "" };
+    return Object.assign({
+      id: uid("asset-image", `${asset?.id || "asset"}-${index + 1}`),
+      src: "",
+      role: index === 0 ? "before" : index === 1 ? "after" : "detail",
+      label: index === 0 ? "Before" : index === 1 ? "After" : `Image ${index + 1}`,
+      capturedAt: "",
+      note: "",
+      fileName: "",
+      addedBy: asset?.updatedBy || "System",
+      addedById: asset?.updatedById || "",
+      createdAt: asset?.updatedAt || ""
+    }, source);
+  }
+
   function normalizeAsset(asset, index) {
+    const source = clone(asset || {});
+    let images = asArray(source.images)
+      .map((image, imageIndex) => normalizeAssetImage(image, imageIndex, source))
+      .filter(image => image.src);
+    if (!images.length && source.image) {
+      images = [normalizeAssetImage({
+        src: source.image,
+        role: "legacy",
+        label: "既存画像"
+      }, 0, source)];
+    }
+    const comparison = Object.assign({
+      mode: images.length >= 2 ? "before-after" : "free",
+      title: "",
+      note: ""
+    }, source.comparison || {});
     return Object.assign({
       id: `asset-${index + 1}`,
       title: "Untitled",
@@ -580,14 +614,21 @@
       rule: "",
       next: "",
       image: "",
+      images: [],
+      comparison,
+      modelId: "",
+      modelName: "",
       updatedBy: "System",
       updatedAt: "",
       updatedById: "",
       staffIds: [],
       history: []
-    }, clone(asset || {}), {
-      staffIds: asArray(asset?.staffIds),
-      history: asArray(asset?.history)
+    }, source, {
+      image: source.image || images[0]?.src || "",
+      images,
+      comparison,
+      staffIds: asArray(source.staffIds),
+      history: asArray(source.history)
     });
   }
 
@@ -746,6 +787,7 @@
     workspaceFromState,
     stateFromWorkspace,
     normalizeAsset,
+    normalizeAssetImage,
     migrateLegacy,
     normalizeOrganizationPayload,
     exportPayload
