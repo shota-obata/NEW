@@ -10,7 +10,7 @@
     "vision", "deadline", "hours", "overtimeHours", "focusArea",
     "progress", "planned", "issue", "journey", "modelBookings",
     "practiceSessions", "supportSessions", "practiceDraft", "libraryUi",
-    "libraryRefs", "meta"
+    "libraryRefs", "onboarding", "meta"
   ];
 
   function clone(value) {
@@ -114,6 +114,7 @@
   function createWorkspace(staffId, seed, options) {
     const source = seed && typeof seed === "object" ? clone(seed) : {};
     const blank = Boolean(options?.blank);
+    const legacyConfigured = !blank;
     const deadline = source.deadline || futureDate(180);
     const sourceJourney = source.journey && typeof source.journey === "object"
       ? source.journey
@@ -164,6 +165,45 @@
       libraryRefs: blank ? [] : asArray(source.libraryRefs),
       primarySupportId: source.primarySupportId || "",
       supportMemberIds: asArray(source.supportMemberIds),
+      onboarding: Object.assign({
+        version: 1,
+        step: 0,
+        visionValue: "",
+        avoidVision: "",
+        arrivalDefinition: "",
+        currentNote: "",
+        selfAssessment: {
+          technical: 0,
+          service: 0,
+          human: 0,
+          autonomy: 0
+        },
+        confirmed: {
+          vision: legacyConfigured,
+          arrival: legacyConfigured,
+          time: legacyConfigured,
+          current: legacyConfigured,
+          issue: legacyConfigured,
+          support: legacyConfigured
+        },
+        completedAt: "",
+        updatedAt: ""
+      }, clone(source.onboarding || {}), {
+        selfAssessment: Object.assign({
+          technical: 0,
+          service: 0,
+          human: 0,
+          autonomy: 0
+        }, clone(source.onboarding?.selfAssessment || {})),
+        confirmed: Object.assign({
+          vision: legacyConfigured,
+          arrival: legacyConfigured,
+          time: legacyConfigured,
+          current: legacyConfigured,
+          issue: legacyConfigured,
+          support: legacyConfigured
+        }, clone(source.onboarding?.confirmed || {}))
+      }),
       meta: Object.assign({
         schemaVersion: SCHEMA_VERSION,
         onboardingComplete: blank ? false : Boolean(source.meta?.onboardingComplete),
