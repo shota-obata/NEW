@@ -1481,9 +1481,9 @@
   }
 
   function refreshVersion() {
-    document.title = "Growth OS v7.3";
+    document.title = "Growth OS v7.4";
     const badge = document.querySelector(".brand small");
-    if (badge) badge.textContent = "v7.3";
+    if (badge) badge.textContent = "v7.4";
   }
 
   function renderV70() {
