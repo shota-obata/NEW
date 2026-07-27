@@ -7,7 +7,7 @@
 
   const SCHEMA_VERSION = 7;
   const WORKSPACE_KEYS = [
-    "vision", "deadline", "hours", "overtimeHours", "focusArea",
+    "vision", "visionProfile", "deadline", "hours", "overtimeHours", "focusArea",
     "progress", "planned", "issue", "journey", "modelBookings",
     "practiceSessions", "supportSessions", "practiceDraft", "libraryUi",
     "libraryRefs", "onboarding", "meta"
@@ -71,6 +71,309 @@
     return date.toISOString().slice(0, 10);
   }
 
+  const DOMAIN_META = {
+    technical: { label: "技術", color: "#5b6cf9" },
+    service: { label: "接客", color: "#13a474" },
+    human: { label: "人間力", color: "#ed8a32" },
+    autonomy: { label: "自走力", color: "#9b63d8" }
+  };
+
+  function cleanText(value, fallback) {
+    const text = String(value || "").trim();
+    return text || fallback || "";
+  }
+
+  function normalizeVisionProfile(profile, workspace) {
+    const source = profile && typeof profile === "object" ? clone(profile) : {};
+    const onboarding = workspace?.onboarding || {};
+    const statement = cleanText(
+      source.statement || workspace?.vision,
+      "なりたい美容師像を設定してください"
+    );
+    const priorities = asArray(source.priorityOrder)
+      .filter(id => DOMAIN_META[id])
+      .concat(["technical", "service", "human", "autonomy"])
+      .filter((id, index, values) => values.indexOf(id) === index)
+      .slice(0, 4);
+    const values = asArray(source.values)
+      .map(value => cleanText(value))
+      .filter(Boolean)
+      .slice(0, 5);
+    return {
+      version: 2,
+      statement,
+      targetCustomers: cleanText(source.targetCustomers),
+      customerValue: cleanText(source.customerValue || onboarding.visionValue),
+      technicalIdentity: cleanText(source.technicalIdentity),
+      serviceIdentity: cleanText(source.serviceIdentity),
+      humanIdentity: cleanText(source.humanIdentity),
+      autonomyIdentity: cleanText(source.autonomyIdentity),
+      avoidVision: cleanText(source.avoidVision || onboarding.avoidVision),
+      values,
+      priorityOrder: priorities,
+      tradeoffs: asArray(source.tradeoffs).map(item => ({
+        question: cleanText(item?.question),
+        choice: cleanText(item?.choice),
+        reason: cleanText(item?.reason)
+      })).filter(item => item.question || item.choice || item.reason),
+      arrivalDefinition: cleanText(source.arrivalDefinition || onboarding.arrivalDefinition),
+      updatedAt: source.updatedAt || "",
+      generatedAt: source.generatedAt || ""
+    };
+  }
+
+  function domainFromFocus(focusArea) {
+    const text = String(focusArea || "");
+    if (/接客|カウンセリング|提案/.test(text)) return "service";
+    if (/人間|報告|時間|責任/.test(text)) return "human";
+    if (/自走|判断|言語|学習/.test(text)) return "autonomy";
+    return "technical";
+  }
+
+  function routeDate(start, deadline, ratio) {
+    if (ratio >= 1 && /^\d{4}-\d{2}-\d{2}$/.test(String(deadline || ""))) return deadline;
+    const from = new Date(`${start}T12:00:00Z`);
+    const to = new Date(`${deadline}T12:00:00Z`);
+    const fromTime = Number.isNaN(from.getTime()) ? Date.now() : from.getTime();
+    const toTime = Number.isNaN(to.getTime()) ? fromTime + 180 * 86400000 : to.getTime();
+    return new Date(fromTime + Math.max(86400000, toTime - fromTime) * ratio)
+      .toISOString()
+      .slice(0, 10);
+  }
+
+  function routeTemplates(domain, focusLabel) {
+    const technicalFocus = cleanText(focusLabel, "設計判断");
+    const templates = {
+      technical: [
+        {
+          title: "完成像を読む",
+          type: "Foundation",
+          criteria: "完成スタイルを長さ・シルエット・ウェイト・質感へ分解し、自分の言葉で説明できる。",
+          evidence: "完成像分析3件 / Before・After比較 / 本人説明",
+          issue: "完成像から、施術前に押さえるべき構造を何によって決めるか？"
+        },
+        {
+          title: "技術生成工程を診断",
+          type: "Diagnostic",
+          criteria: "観察・解釈・設計・操作・確認・修正のどこで判断が止まったかを特定できる。",
+          evidence: "異なるモデル2件 / 停止工程の自己診断 / Support比較",
+          issue: "結果のズレは、技術生成工程のどこから始まっているか？"
+        },
+        {
+          title: `${technicalFocus}を自立`,
+          type: "Critical",
+          criteria: `${technicalFocus}を完成像から逆算し、Supportの答えに依存せず設計・実行できる。`,
+          evidence: "設計記録3件 / モデル2名 / 判断理由 / Support介入L1以下",
+          issue: `${technicalFocus}を、条件が変わっても自分で決めるには何を基準にするか？`
+        },
+        {
+          title: "異条件へ転用",
+          type: "Transfer",
+          criteria: "骨格・髪質・長さが変わっても、獲得した判断原則を修正して再利用できる。",
+          evidence: "条件違い3件 / 再現率80%以上 / 失敗条件の説明",
+          issue: "同じ判断原則を、異なる条件へどう調整すれば再現できるか？"
+        }
+      ],
+      service: [
+        {
+          title: "顧客理解を構造化",
+          type: "Foundation",
+          criteria: "要望・背景・優先順位・NG条件を分けて確認し、合意した完成像を言語化できる。",
+          evidence: "カウンセリング記録3件 / 要望整理 / 本人確認",
+          issue: "お客様の言葉から、仕上がり判断に必要な情報をどう取り出すか？"
+        },
+        {
+          title: "接客体験の停止点を診断",
+          type: "Diagnostic",
+          criteria: "第一印象・理解・提案・施術中・仕上げ・次回接続のどこで体験価値が弱まったかを特定できる。",
+          evidence: "接客振り返り3件 / Support観察 / 顧客反応",
+          issue: "目指す顧客体験は、接客工程のどこで途切れているか？"
+        },
+        {
+          title: "提案と合意をつくる",
+          type: "Critical",
+          criteria: "要望と技術条件を、安心感のある選択肢と根拠へ変換し、顧客と合意できる。",
+          evidence: "提案記録3件 / 合意確認 / 言い換え比較",
+          issue: "要望と技術判断を、押しつけずに納得できる提案へどう変えるか？"
+        },
+        {
+          title: "顧客条件へ適応",
+          type: "Transfer",
+          criteria: "会話量・知識量・不安の強さが異なる顧客にも、Visionと一貫した体験をつくれる。",
+          evidence: "顧客条件違い3件 / 自己評価 / Support確認",
+          issue: "相手が変わっても、黒坂らしい価値をどう保つか？"
+        }
+      ],
+      human: [
+        {
+          title: "判断と報告の基準を持つ",
+          type: "Foundation",
+          criteria: "不確実な状態を隠さず、事実・仮説・必要な支援を適切な時点で共有できる。",
+          evidence: "判断記録3件 / 報告タイミング / Support確認",
+          issue: "分からない状態を、いつ・何を根拠に共有すべきか？"
+        },
+        {
+          title: "行動停止点を診断",
+          type: "Diagnostic",
+          criteria: "先延ばし・抱え込み・確認依存が起きる条件と、その直前の判断を説明できる。",
+          evidence: "停止事例2件 / 原因仮説 / 行動変更",
+          issue: "判断が止まる直前に、何を見落としているか？"
+        },
+        {
+          title: "不確実性を扱う",
+          type: "Critical",
+          criteria: "正解がない状況で仮説を立て、必要な相談を行い、結果へ責任を持って修正できる。",
+          evidence: "仮説検証3件 / 相談判断 / 修正記録",
+          issue: "正解が見えない状況で、どう仮説を立てて前へ進むか？"
+        }
+      ],
+      autonomy: [
+        {
+          title: "価値ある問いを立てる",
+          type: "Foundation",
+          criteria: "感想や苦手ではなく、次の経験で答えを検証できる問いへ変換できる。",
+          evidence: "問い3件 / 必要性の説明 / 検証条件",
+          issue: "今の局面で、何に答えれば最も成長が動くか？"
+        },
+        {
+          title: "仮説検証を自走",
+          type: "Critical",
+          criteria: "問い・成功条件・Practice・Evidence・振り返りを自分で一周させられる。",
+          evidence: "自走サイクル3回 / Support介入L1以下 / 次の問い",
+          issue: "Supportが答えを示さなくても、必要な解までどう到達するか？"
+        }
+      ]
+    };
+    return templates[domain] || templates.technical;
+  }
+
+  function createPersonalJourney(workspace, options) {
+    const source = workspace && typeof workspace === "object" ? workspace : {};
+    const profile = normalizeVisionProfile(source.visionProfile, source);
+    const assessment = source.onboarding?.selfAssessment || {};
+    const focusDomain = domainFromFocus(source.focusArea);
+    const priorities = profile.priorityOrder.slice();
+    const scores = {};
+    Object.keys(DOMAIN_META).forEach((domain, index) => {
+      scores[domain] =
+        (focusDomain === domain ? 40 : 0) +
+        (4 - priorities.indexOf(domain)) * 8 +
+        (7 - Math.max(0, Number(assessment[domain]) || 0)) * 5 +
+        (domain === "technical" || domain === "service" ? 8 : 0) -
+        index * .01;
+    });
+    const orderedDomains = Object.keys(scores).sort((a, b) => scores[b] - scores[a]);
+    const primary = orderedDomains[0] || focusDomain;
+    const secondary = orderedDomains[1] || (primary === "technical" ? "service" : "technical");
+    const checkpointSeeds = [
+      ...routeTemplates(primary, source.focusArea).slice(0, 3),
+      routeTemplates(secondary, source.focusArea)[0],
+      {
+        title: `${DOMAIN_META[secondary].label}との統合診断`,
+        type: "Diagnostic",
+        criteria: `${DOMAIN_META[primary].label}と${DOMAIN_META[secondary].label}が一つの顧客体験としてつながっているかを診断できる。`,
+        evidence: "モデル2件 / 本人説明 / Support比較",
+        issue: `${DOMAIN_META[primary].label}の判断は、${DOMAIN_META[secondary].label}の価値とどこでつながるか？`,
+        domain: secondary
+      },
+      ...routeTemplates(primary, source.focusArea).slice(3, 4),
+      {
+        title: "自走サイクルを確認",
+        type: "Optional",
+        criteria: "問いからEvidence・Library化までを自分で一周し、次の問いを設定できる。",
+        evidence: "自走サイクル2回 / Library資産1件",
+        issue: "今回の経験を、次の判断へどう再利用するか？",
+        domain: "autonomy"
+      },
+      {
+        title: "スタイリスト実践を自力完結",
+        type: "Integration",
+        criteria: profile.arrivalDefinition || "接客から施術・説明・次回提案まで、Visionと一貫した判断で自力完結できる。",
+        evidence: "条件違いモデル3件 / 顧客体験確認 / Support最終確認",
+        issue: "Visionで定義した価値を、一連の顧客体験として再現できるか？",
+        domain: primary
+      }
+    ];
+    const deadline = source.deadline || futureDate(180);
+    const today = options?.today || new Date().toISOString().slice(0, 10);
+    const checkpoints = checkpointSeeds.map((seed, index) => {
+      const domain = seed.domain || (
+        index < 3 ? primary :
+        index < 5 ? secondary :
+        index === 6 ? "autonomy" : primary
+      );
+      const optional = seed.type === "Optional";
+      const status = index === 0 ? "current" : index === 1 ? "next" : optional ? "optional" : "locked";
+      const hours = seed.type === "Diagnostic" ? 10 :
+        seed.type === "Integration" ? 28 :
+        seed.type === "Transfer" ? 24 :
+        optional ? 12 : 20;
+      return {
+        id: `journey-v2-${index + 1}`,
+        code: `CP${index + 1}`,
+        title: seed.title,
+        description: seed.criteria,
+        domain,
+        type: seed.type,
+        date: routeDate(today, deadline, (index + 1) / checkpointSeeds.length),
+        status,
+        order: index + 1,
+        parentId: "",
+        dependsOn: index && !optional ? [`journey-v2-${index}`] : [],
+        depends: index && !optional ? `CP${index}` : "",
+        criteria: seed.criteria,
+        successConditions: [seed.criteria],
+        evidenceRequirements: seed.evidence.split(" / "),
+        evidence: seed.evidence,
+        issue: seed.issue,
+        hours,
+        actual: 0,
+        evidenceItems: [],
+        history: [],
+        supportHistory: [],
+        confidence: 0,
+        source: "generated"
+      };
+    });
+    const required = checkpoints.filter(item => item.type !== "Optional");
+    return {
+      version: 2,
+      routeMode: "personalized",
+      generatedFrom: {
+        visionVersion: profile.version,
+        deadline,
+        generatedAt: isoNow(),
+        focusDomain: primary
+      },
+      domains: Object.keys(DOMAIN_META).map(domain => ({
+        id: domain,
+        label: DOMAIN_META[domain].label,
+        color: DOMAIN_META[domain].color,
+        weight: Math.max(1, Math.round(scores[domain])),
+        target: cleanText(profile[`${domain}Identity`]),
+        status: domain === primary ? "focus" : domain === secondary ? "connected" : "supporting"
+      })),
+      checkpoints,
+      currentCheckpointId: checkpoints[0]?.id || "",
+      history: [],
+      routeChanges: [],
+      routeReason: `${DOMAIN_META[primary].label}を現在の主軸に置き、${DOMAIN_META[secondary].label}を接続して、期限日に一連の顧客体験を自力完結する順序です。`,
+      requiredHours: required.reduce((sum, item) => sum + item.hours, 0),
+      actualHours: 0
+    };
+  }
+
+  function isDefaultJourney(journey) {
+    const checkpoints = asArray(journey?.checkpoints);
+    if (!checkpoints.length) return true;
+    return checkpoints.length === 5 &&
+      checkpoints.every((checkpoint, index) =>
+        checkpoint.id === `cp${index + 1}` &&
+        asArray(checkpoint.evidenceItems).length === 0 &&
+        Number(checkpoint.actual || 0) === 0
+      );
+  }
+
   function defaultCheckpoint(index, deadline) {
     const titles = ["観察", "完成像", "基準点設計", "操作への変換", "条件転移"];
     const types = ["Foundation", "Critical", "Critical", "Required", "Transfer"];
@@ -108,6 +411,14 @@
     result.evidenceItems = asArray(result.evidenceItems);
     result.history = asArray(result.history);
     result.supportHistory = asArray(result.supportHistory);
+    result.dependsOn = asArray(result.dependsOn);
+    result.successConditions = asArray(result.successConditions);
+    result.evidenceRequirements = asArray(result.evidenceRequirements);
+    result.order = Number(result.order) || index + 1;
+    result.domain = result.domain || "technical";
+    result.description = result.description || result.criteria || "";
+    result.confidence = Math.max(0, Math.min(100, Number(result.confidence) || 0));
+    result.source = result.source || "legacy";
     return result;
   }
 
@@ -129,11 +440,17 @@
       next.status = "current";
     }
 
-    const workspace = {
-      staffId,
+    const workspaceSeed = {
       vision: blank ? "なりたい美容師像を設定してください" : (
         typeof source.vision === "object" ? source.vision.text : source.vision
       ) || "なりたい美容師像を設定してください",
+      onboarding: clone(source.onboarding || {})
+    };
+    const visionProfile = normalizeVisionProfile(source.visionProfile, workspaceSeed);
+    const workspace = {
+      staffId,
+      vision: visionProfile.statement,
+      visionProfile,
       deadline,
       hours: Math.max(0, Number(source.hours ?? source.weeklyHours ?? 6) || 0),
       overtimeHours: Math.max(0, Number(source.overtimeHours || 0) || 0),
@@ -145,9 +462,23 @@
         age: 0,
         successConditions: []
       }, blank ? {} : clone(source.issue || {})),
-      journey: Object.assign({}, sourceJourney, {
+      journey: Object.assign({
+        version: Number(sourceJourney.version) || 1,
+        routeMode: sourceJourney.routeMode || "legacy",
+        generatedFrom: clone(sourceJourney.generatedFrom || {}),
+        domains: asArray(sourceJourney.domains),
+        currentCheckpointId: sourceJourney.currentCheckpointId || "",
+        routeChanges: asArray(sourceJourney.routeChanges),
+        routeReason: sourceJourney.routeReason || ""
+      }, sourceJourney, {
         checkpoints,
         history: blank ? [] : asArray(sourceJourney.history),
+        domains: asArray(sourceJourney.domains),
+        routeChanges: asArray(sourceJourney.routeChanges),
+        currentCheckpointId: sourceJourney.currentCheckpointId ||
+          checkpoints.find(item => item.status === "current")?.id ||
+          checkpoints[0]?.id ||
+          "",
         requiredHours: checkpoints.reduce((sum, item) => sum + (Number(item.hours) || 0), 0),
         actualHours: checkpoints.reduce((sum, item) => sum + (Number(item.actual) || 0), 0)
       }),
@@ -206,6 +537,7 @@
       }),
       meta: Object.assign({
         schemaVersion: SCHEMA_VERSION,
+        visionVersion: Number(source.meta?.visionVersion) || Number(source.visionProfile?.version) || 1,
         onboardingComplete: blank ? false : Boolean(source.meta?.onboardingComplete),
         migratedFrom: "",
         lastSaved: "",
@@ -406,6 +738,10 @@
     uid,
     isoNow,
     createMember,
+    normalizeVisionProfile,
+    createPersonalJourney,
+    isDefaultJourney,
+    DOMAIN_META,
     createWorkspace,
     workspaceFromState,
     stateFromWorkspace,
