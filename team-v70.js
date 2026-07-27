@@ -111,6 +111,7 @@
 
   function normalizeWorkspaceRecords(workspace) {
     if (!workspace) return;
+    workspace.visionProfile = Core.normalizeVisionProfile(workspace.visionProfile, workspace);
     workspace.onboarding = Object.assign({
       version: 1,
       step: 0,
@@ -601,6 +602,16 @@
       workspace.vision = vision;
       workspace.onboarding.visionValue = document.getElementById("v71VisionValue").value.trim();
       workspace.onboarding.avoidVision = document.getElementById("v71AvoidVision").value.trim();
+      workspace.visionProfile = Core.normalizeVisionProfile(Object.assign(
+        {},
+        workspace.visionProfile || {},
+        {
+          statement: vision,
+          customerValue: workspace.onboarding.visionValue,
+          avoidVision: workspace.onboarding.avoidVision,
+          updatedAt: isoNow()
+        }
+      ), workspace);
       workspace.onboarding.confirmed.vision = true;
     }
     if (step === 1) {
@@ -610,6 +621,11 @@
       if (!meaningfulText(arrival)) return alert("期限時点の到達状態を、観測できる行動で入力してください。"), false;
       workspace.deadline = deadline;
       workspace.onboarding.arrivalDefinition = arrival;
+      workspace.visionProfile = Core.normalizeVisionProfile(Object.assign(
+        {},
+        workspace.visionProfile || {},
+        { arrivalDefinition: arrival, updatedAt: isoNow() }
+      ), workspace);
       workspace.onboarding.confirmed.arrival = true;
       const finalCheckpoint = asArray(workspace.journey?.checkpoints).slice(-1)[0];
       if (finalCheckpoint) finalCheckpoint.date = deadline;
@@ -1273,6 +1289,11 @@
       issue: state.issue?.title
     };
     state.vision = document.getElementById("v7Vision").value.trim();
+    state.visionProfile = Core.normalizeVisionProfile(Object.assign(
+      {},
+      state.visionProfile || {},
+      { statement: state.vision, updatedAt: isoNow() }
+    ), state);
     state.deadline = document.getElementById("v7Deadline").value;
     state.hours = Math.max(0, Number(document.getElementById("v7Hours").value) || 0);
     state.overtimeHours = 0;
@@ -1304,7 +1325,7 @@
     const blob = new Blob([JSON.stringify(exported, null, 2)], { type: "application/json" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `growth-os-v7-1-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `growth-os-v7-2-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   }
@@ -1458,9 +1479,9 @@
   }
 
   function refreshVersion() {
-    document.title = "Growth OS v7.1";
+    document.title = "Growth OS v7.2";
     const badge = document.querySelector(".brand small");
-    if (badge) badge.textContent = "v7.1";
+    if (badge) badge.textContent = "v7.2";
   }
 
   function renderV70() {
