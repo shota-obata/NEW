@@ -77,6 +77,9 @@ const normalized = Core.normalizeOrganizationPayload(migrated);
 assert.equal(normalized.organization.staffMembers.length, 2);
 assert.equal(normalized.staffWorkspaces["staff-2"].progress, 0);
 assert.equal(normalized.staffWorkspaces["staff-2"].practiceSessions.length, 0);
+assert.equal(normalized.staffWorkspaces["staff-2"].onboarding.step, 0);
+assert.equal(normalized.staffWorkspaces["staff-2"].onboarding.confirmed.vision, false);
+assert.equal(normalized.staffWorkspaces["staff-2"].meta.onboardingComplete, false);
 assert.notEqual(normalized.staffWorkspaces["staff-2"].journey, workspace.journey);
 assert.equal(normalized.organization.activeStaffId, staffId);
 
@@ -87,12 +90,14 @@ const nextState = Core.stateFromWorkspace(
   "home"
 );
 nextState.issue.title = "佐藤だけの問い";
+nextState.onboarding.arrivalDefinition = "異なる条件でも自力で再現し、判断理由を説明できる";
 const savedSecond = Core.workspaceFromState(
   nextState,
   "staff-2",
   normalized.staffWorkspaces["staff-2"]
 );
 assert.equal(savedSecond.issue.title, "佐藤だけの問い");
+assert.equal(savedSecond.onboarding.arrivalDefinition, nextState.onboarding.arrivalDefinition);
 assert.equal(normalized.staffWorkspaces[staffId].issue.title, legacy.issue.title);
 assert.equal(nextState.library.length, 1);
 
