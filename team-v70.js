@@ -14,6 +14,7 @@
   let managementMode = "all";
   let editingMember = null;
   let pendingBeforeAction = null;
+  let onboardingContext = null;
 
   const safe = value => typeof esc === "function"
     ? esc(String(value ?? ""))
@@ -110,6 +111,45 @@
 
   function normalizeWorkspaceRecords(workspace) {
     if (!workspace) return;
+    workspace.onboarding = Object.assign({
+      version: 1,
+      step: 0,
+      visionValue: "",
+      avoidVision: "",
+      arrivalDefinition: "",
+      currentNote: "",
+      selfAssessment: {
+        technical: 0,
+        service: 0,
+        human: 0,
+        autonomy: 0
+      },
+      confirmed: {
+        vision: false,
+        arrival: false,
+        time: false,
+        current: false,
+        issue: false,
+        support: false
+      },
+      completedAt: "",
+      updatedAt: ""
+    }, workspace.onboarding || {}, {
+      selfAssessment: Object.assign({
+        technical: 0,
+        service: 0,
+        human: 0,
+        autonomy: 0
+      }, workspace.onboarding?.selfAssessment || {}),
+      confirmed: Object.assign({
+        vision: false,
+        arrival: false,
+        time: false,
+        current: false,
+        issue: false,
+        support: false
+      }, workspace.onboarding?.confirmed || {})
+    });
     const staffId = workspace.staffId;
     const staff = organization().staffMembers.find(member => member.id === staffId);
     const supportId = workspace.primarySupportId || staff?.primarySupportId ||
@@ -290,6 +330,83 @@
     };
   }
 
+  function meaningfulText(value, placeholders = []) {
+    const text = String(value || "").trim();
+    return text.length >= 6 && !placeholders.some(placeholder => text.includes(placeholder));
+  }
+
+  function onboardingReadiness(member, workspace) {
+    const current = currentCheckpoint(workspace || {});
+    const onboarding = workspace?.onboarding || {};
+    const confirmed = onboarding.confirmed || {};
+    const finalCheckpoint = asArray(workspace?.journey?.checkpoints).slice(-1)[0];
+    const checks = [
+      {
+        id: "vision",
+        label: "なりたい美容師像",
+        ok: confirmed.vision !== false && meaningfulText(workspace?.vision, ["設定してください"])
+      },
+      {
+        id: "arrival",
+        label: "期限時点の到達状態",
+        ok: confirmed.arrival !== false && meaningfulText(onboarding.arrivalDefinition || finalCheckpoint?.criteria, ["未設定"])
+      },
+      {
+        id: "time",
+        label: "期限・勤務時間",
+        ok: confirmed.time !== false && Boolean(workspace?.deadline) && Number(workspace?.hours) > 0 && Number(workspace?.overtimeHours || 0) === 0
+      },
+      {
+        id: "current",
+        label: "現在地",
+        ok: confirmed.current !== false && Boolean(current?.id && current?.title)
+      },
+      {
+        id: "issue",
+        label: "今回の問い",
+        ok: confirmed.issue !== false && meaningfulText(workspace?.issue?.title || current?.issue, [
+          "もっとも答える必要がある問いを設定する",
+          "設定してください"
+        ])
+      },
+      {
+        id: "support",
+        label: "Primary Support",
+        ok: confirmed.support !== false && Boolean(member?.primarySupportId || workspace?.primarySupportId)
+      },
+      {
+        id: "model",
+        label: "最初のモデル予定",
+        ok: asArray(workspace?.modelBookings).some(model => Boolean(model.date))
+      }
+    ];
+    const completed = checks.filter(item => item.ok).length;
+    const setupReady = checks.slice(0, 6).every(item => item.ok);
+    const operationReady = checks.every(item => item.ok);
+    return {
+      checks,
+      completed,
+      total: checks.length,
+      percent: Math.round(completed / checks.length * 100),
+      missing: checks.filter(item => !item.ok),
+      setupReady,
+      operationReady
+    };
+  }
+
+  function updateOnboardingStatus(workspace = state, member = activeStaff()) {
+    if (!workspace) return onboardingReadiness(member, workspace);
+    workspace.onboarding = workspace.onboarding || {};
+    const readiness = onboardingReadiness(member, workspace);
+    workspace.meta = workspace.meta || {};
+    workspace.meta.onboardingComplete = readiness.setupReady;
+    workspace.onboarding.updatedAt = isoNow();
+    if (readiness.setupReady && !workspace.onboarding.completedAt) {
+      workspace.onboarding.completedAt = isoNow();
+    }
+    return readiness;
+  }
+
   function renderAvatar(member, className = "") {
     if (member?.avatar) {
       return `<span class="v7-avatar ${className}"><img src="${safe(member.avatar)}" alt=""></span>`;
@@ -302,6 +419,306 @@
       .filter(member => includeArchived || member.status === "active")
       .map(member => `<option value="${safe(member.id)}" ${member.id === selectedId ? "selected" : ""}>${safe(member.name)}${member.status === "archived" ? "（アーカイブ）" : ""}</option>`)
       .join("");
+  }
+
+  function ensureOnboardingModal() {
+    if (document.getElementById("v71Onboarding")) return;
+    document.body.insertAdjacentHTML("beforeend", `
+      <div class="v71-onboarding hidden" id="v71Onboarding" role="dialog" aria-modal="true" aria-labelledby="v71OnboardingTitle">
+        <div class="v71-onboarding-shell">
+          <aside class="v71-onboarding-side">
+            <div>
+              <span class="v71-onboarding-brand">Growth OS</span>
+              <h2>未来から、今を決める。</h2>
+              <p>Visionと期限から逆算し、最初のJourneyと今回の問いを設計します。</p>
+            </div>
+            <ol id="v71OnboardingSteps"></ol>
+            <button class="v71-onboarding-exit" data-v7-action="close-onboarding">あとで続ける</button>
+          </aside>
+          <main class="v71-onboarding-main">
+            <div class="v71-onboarding-top">
+              <span id="v71OnboardingProgress">1 / 5</span>
+              <button class="close" data-v7-action="close-onboarding" aria-label="閉じる">×</button>
+            </div>
+            <div id="v71OnboardingContent"></div>
+            <div class="v71-onboarding-actions">
+              <button class="btn secondary" id="v71OnboardingBack" data-v7-action="onboarding-back">戻る</button>
+              <button class="btn primary" id="v71OnboardingNext" data-v7-action="onboarding-next">次へ</button>
+            </div>
+          </main>
+        </div>
+      </div>
+    `);
+  }
+
+  function assessmentOptions(selected) {
+    return Array.from({ length: 7 }, (_, index) => {
+      const value = index + 1;
+      return `<option value="${value}" ${Number(selected || 3) === value ? "selected" : ""}>${value} / 7</option>`;
+    }).join("");
+  }
+
+  function onboardingStepMarkup(step, member, workspace) {
+    const onboarding = workspace.onboarding || {};
+    const assessments = onboarding.selfAssessment || {};
+    const futureModel = asArray(workspace.modelBookings)
+      .slice()
+      .sort((a, b) => `${a.date || ""}${a.time || ""}`.localeCompare(`${b.date || ""}${b.time || ""}`))[0];
+    const current = currentCheckpoint(workspace);
+    if (step === 0) {
+      return `
+        <div class="v71-question">
+          <div class="eyebrow">VISION / 01</div>
+          <h1 id="v71OnboardingTitle">どんな美容師になりたい？</h1>
+          <p>綺麗な言葉ではなく、誰に・何を・どう届けたいかを本人の言葉で決めます。</p>
+        </div>
+        <div class="v71-answer">
+          <label><span>なりたい美容師像</span><textarea id="v71Vision" placeholder="例：骨格と髪質を読み、顔まわりを安心して任せてもらえる美容師">${safe(workspace.vision === "なりたい美容師像を設定してください" ? "" : workspace.vision)}</textarea></label>
+          <label><span>お客様へ届けたい価値</span><textarea id="v71VisionValue" placeholder="施術後、お客様にどんな変化や感情を持ち帰ってほしい？">${safe(onboarding.visionValue || "")}</textarea></label>
+          <label><span>なりたくない美容師像</span><textarea id="v71AvoidVision" placeholder="絶対に避けたい働き方・接客・技術姿勢">${safe(onboarding.avoidVision || "")}</textarea></label>
+        </div>
+      `;
+    }
+    if (step === 1) {
+      return `
+        <div class="v71-question">
+          <div class="eyebrow">TARGET / 02</div>
+          <h1 id="v71OnboardingTitle">いつまでに、どこまで行く？</h1>
+          <p>期限を努力の圧力にせず、何を捨てて何へ集中するかを決める基準にします。</p>
+        </div>
+        <div class="v71-answer">
+          <label><span>到達期限</span><input id="v71Deadline" type="date" value="${safe(workspace.deadline || "")}"></label>
+          <label><span>その日に何ができれば「到達」と言える？</span><textarea id="v71Arrival" placeholder="観測できる行動で定義する。例：異なる骨格でも、顔まわりを自力設計し理由を説明できる">${safe(onboarding.arrivalDefinition || "")}</textarea></label>
+          <div class="v71-principle"><b>期限は、時間外労働を増やす理由にしない。</b><span>間に合わない時は、Journey・科目・Support・期限を再設計します。</span></div>
+        </div>
+      `;
+    }
+    if (step === 2) {
+      return `
+        <div class="v71-question">
+          <div class="eyebrow">TIME / 03</div>
+          <h1 id="v71OnboardingTitle">勤務時間内で、何時間使える？</h1>
+          <p>時間を努力量ではなく設計上の制約として固定し、犬の道を防ぎます。</p>
+        </div>
+        <div class="v71-time-answer">
+          <label><span>1週間に使える育成時間</span><div><input id="v71Hours" type="number" min=".5" step=".5" value="${Number(workspace.hours) || 0}"><b>時間 / 週</b></div></label>
+          <div class="v71-zero"><strong>0h</strong><span>時間外労働<br>Growth OSの固定条件</span></div>
+        </div>
+        <div class="v71-principle"><b>時間内で成立しない計画は、本人ではなく設計を直す。</b><span>科目を絞る・Checkpointを組み替える・Support方法を変える・期限を見直す。</span></div>
+      `;
+    }
+    if (step === 3) {
+      return `
+        <div class="v71-question">
+          <div class="eyebrow">CURRENT / 04</div>
+          <h1 id="v71OnboardingTitle">今、どこにいる？</h1>
+          <p>AIが採点せず、本人が現在地を決めます。実践記録とのズレは後から鏡として表示します。</p>
+        </div>
+        <div class="v71-answer">
+          <label><span>今もっとも注力する領域</span><select id="v71Focus">${["技術", "接客", "人間力", "判断力", "自走力"].map(value => `<option ${workspace.focusArea === value ? "selected" : ""}>${value}</option>`).join("")}</select></label>
+          <label><span>現在地を自分の言葉で</span><textarea id="v71CurrentNote" placeholder="できること、まだ不安定なこと、Supportへ頼っている判断">${safe(onboarding.currentNote || "")}</textarea></label>
+          <div class="v71-assessments">
+            <label><span>技術</span><select id="v71AssessTechnical">${assessmentOptions(assessments.technical)}</select></label>
+            <label><span>接客</span><select id="v71AssessService">${assessmentOptions(assessments.service)}</select></label>
+            <label><span>人間力</span><select id="v71AssessHuman">${assessmentOptions(assessments.human)}</select></label>
+            <label><span>自走力</span><select id="v71AssessAutonomy">${assessmentOptions(assessments.autonomy)}</select></label>
+          </div>
+          <small class="v71-scale">1 = まだ分からない　/　4 = モデルで試せる　/　7 = 他者へ教えられる</small>
+        </div>
+      `;
+    }
+    return `
+      <div class="v71-question">
+        <div class="eyebrow">START / 05</div>
+        <h1 id="v71OnboardingTitle">最初の問いと、検証日を決める。</h1>
+        <p>Issue Aは苦手科目ではなく、次のCheckpointへ進むために今もっとも答える価値が高い問いです。</p>
+      </div>
+      <div class="v71-answer">
+        <label><span>Primary Support</span><select id="v71PrimarySupport"><option value="">選択してください</option>${personOptions("support", member.primarySupportId || workspace.primarySupportId)}</select></label>
+        <label><span>今回の問い</span><textarea id="v71Issue" placeholder="例：異なる骨格でも、完成像から顔まわりの基準点を自分で設定できるか">${safe(workspace.issue?.title?.includes("もっとも答える必要がある問いを設定する") ? "" : workspace.issue?.title || current?.issue || "")}</textarea></label>
+        <div class="v71-model-start">
+          <div><span>最初のモデル予定（あとからでも可）</span><small>予定を先に置くと、問いが実験へ変わります。</small></div>
+          <div class="v71-model-fields">
+            <input id="v71ModelName" placeholder="モデル名" value="${safe(futureModel?.name || "")}">
+            <input id="v71ModelDate" type="date" value="${safe(futureModel?.date || "")}">
+            <input id="v71ModelTime" type="time" value="${safe(futureModel?.time || "10:00")}">
+            <select id="v71ModelMenu">${["カット", "接客モデル", "カット＋接客", "ウィッグ"].map(value => `<option ${futureModel?.menu === value ? "selected" : ""}>${value}</option>`).join("")}</select>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderOnboardingStep() {
+    if (!onboardingContext) return;
+    const member = organization().staffMembers.find(item => item.id === onboardingContext.staffId);
+    const workspace = payload.staffWorkspaces[onboardingContext.staffId];
+    if (!member || !workspace) return;
+    const step = Math.max(0, Math.min(4, onboardingContext.step));
+    const labels = ["Vision", "到達点", "時間", "現在地", "開始"];
+    document.getElementById("v71OnboardingSteps").innerHTML = labels.map((label, index) => `
+      <li class="${index === step ? "active" : ""} ${index < step ? "done" : ""}">
+        <i>${index < step ? "✓" : index + 1}</i><span>${label}</span>
+      </li>
+    `).join("");
+    document.getElementById("v71OnboardingProgress").textContent = `${step + 1} / 5　${member.name}`;
+    document.getElementById("v71OnboardingContent").innerHTML = onboardingStepMarkup(step, member, workspace);
+    document.getElementById("v71OnboardingBack").disabled = step === 0;
+    document.getElementById("v71OnboardingNext").textContent = step === 4 ? "Journeyを開始" : "次へ";
+  }
+
+  function openOnboarding(staffId, step = 0) {
+    const member = organization().staffMembers.find(item => item.id === staffId && item.status === "active");
+    if (!member) return;
+    if (organization().activeStaffId !== staffId) {
+      applyActiveWorkspace(staffId, { role: state.role, page: state.page });
+    }
+    normalizeWorkspaceRecords(payload.staffWorkspaces[staffId]);
+    onboardingContext = { staffId, step: Math.max(0, Math.min(4, Number(step) || 0)) };
+    ensureOnboardingModal();
+    renderOnboardingStep();
+    document.getElementById("v71Onboarding").classList.remove("hidden");
+    document.body.classList.add("v71-modal-open");
+  }
+
+  function closeOnboarding() {
+    document.getElementById("v71Onboarding")?.classList.add("hidden");
+    document.body.classList.remove("v71-modal-open");
+    onboardingContext = null;
+    render();
+  }
+
+  function saveOnboardingStep() {
+    if (!onboardingContext) return false;
+    const workspace = payload.staffWorkspaces[onboardingContext.staffId];
+    const member = organization().staffMembers.find(item => item.id === onboardingContext.staffId);
+    const step = onboardingContext.step;
+    workspace.onboarding = workspace.onboarding || {};
+    workspace.onboarding.confirmed = workspace.onboarding.confirmed || {};
+    if (step === 0) {
+      const vision = document.getElementById("v71Vision").value.trim();
+      if (!meaningfulText(vision)) return alert("なりたい美容師像を、もう少し具体的に入力してください。"), false;
+      workspace.vision = vision;
+      workspace.onboarding.visionValue = document.getElementById("v71VisionValue").value.trim();
+      workspace.onboarding.avoidVision = document.getElementById("v71AvoidVision").value.trim();
+      workspace.onboarding.confirmed.vision = true;
+    }
+    if (step === 1) {
+      const deadline = document.getElementById("v71Deadline").value;
+      const arrival = document.getElementById("v71Arrival").value.trim();
+      if (!deadline) return alert("到達期限を設定してください。"), false;
+      if (!meaningfulText(arrival)) return alert("期限時点の到達状態を、観測できる行動で入力してください。"), false;
+      workspace.deadline = deadline;
+      workspace.onboarding.arrivalDefinition = arrival;
+      workspace.onboarding.confirmed.arrival = true;
+      const finalCheckpoint = asArray(workspace.journey?.checkpoints).slice(-1)[0];
+      if (finalCheckpoint) finalCheckpoint.date = deadline;
+    }
+    if (step === 2) {
+      const hours = Math.max(0, Number(document.getElementById("v71Hours").value) || 0);
+      if (!hours) return alert("勤務時間内で使える時間を入力してください。"), false;
+      workspace.hours = hours;
+      workspace.overtimeHours = 0;
+      workspace.onboarding.confirmed.time = true;
+    }
+    if (step === 3) {
+      const note = document.getElementById("v71CurrentNote").value.trim();
+      if (!meaningfulText(note)) return alert("現在地を、自分の言葉でもう少し具体的に入力してください。"), false;
+      workspace.focusArea = document.getElementById("v71Focus").value;
+      workspace.onboarding.currentNote = note;
+      workspace.onboarding.selfAssessment = {
+        technical: Number(document.getElementById("v71AssessTechnical").value),
+        service: Number(document.getElementById("v71AssessService").value),
+        human: Number(document.getElementById("v71AssessHuman").value),
+        autonomy: Number(document.getElementById("v71AssessAutonomy").value)
+      };
+      workspace.onboarding.confirmed.current = true;
+    }
+    if (step === 4) {
+      const supportId = document.getElementById("v71PrimarySupport").value;
+      const issue = document.getElementById("v71Issue").value.trim();
+      if (!supportId) return alert("Primary Supportを選択してください。"), false;
+      if (!meaningfulText(issue)) return alert("今回の問いを、次のモデルで検証できる一問にしてください。"), false;
+      member.primarySupportId = supportId;
+      member.supportMemberIds = Array.from(new Set([...asArray(member.supportMemberIds), supportId]));
+      workspace.primarySupportId = supportId;
+      workspace.supportMemberIds = member.supportMemberIds.slice();
+      workspace.onboarding.confirmed.support = true;
+      workspace.issue = Object.assign({}, workspace.issue || {}, {
+        title: issue,
+        age: 0,
+        updatedAt: isoNow()
+      });
+      workspace.onboarding.confirmed.issue = true;
+      const current = currentCheckpoint(workspace);
+      if (current) current.issue = issue;
+      const modelName = document.getElementById("v71ModelName").value.trim();
+      const modelDate = document.getElementById("v71ModelDate").value;
+      if (modelName && modelDate) {
+        const matchingModel = asArray(workspace.modelBookings).find(model =>
+          model.id === workspace.onboarding.firstModelId ||
+          (model.name === modelName && model.date === modelDate)
+        );
+        const existingId = matchingModel?.id || "";
+        const existingIndex = asArray(workspace.modelBookings).findIndex(model => model.id === existingId);
+        const model = {
+          id: existingId || Core.uid("model", `${member.id}-${Date.now()}`),
+          staffId: member.id,
+          name: modelName,
+          date: modelDate,
+          time: document.getElementById("v71ModelTime").value || "10:00",
+          duration: 120,
+          menu: document.getElementById("v71ModelMenu").value,
+          checkpointId: current?.id || "",
+          checkpointCode: current?.code || "",
+          note: issue,
+          updatedAt: isoNow()
+        };
+        if (existingIndex >= 0) workspace.modelBookings[existingIndex] = model;
+        else workspace.modelBookings.push(model);
+        workspace.onboarding.firstModelId = model.id;
+      }
+    }
+    workspace.onboarding.step = Math.min(4, step + 1);
+    workspace.onboarding.updatedAt = isoNow();
+    payload.staffWorkspaces[member.id] = workspace;
+    if (member.id === organization().activeStaffId) {
+      state = Core.stateFromWorkspace(workspace, organization().library, state.role, state.page);
+    }
+    updateOnboardingStatus(workspace, member);
+    syncAssignments();
+    persistPayload();
+    legacySave();
+    return true;
+  }
+
+  function moveOnboarding(direction) {
+    if (!onboardingContext) return;
+    if (direction > 0 && !saveOnboardingStep()) return;
+    if (direction < 0) {
+      onboardingContext.step = Math.max(0, onboardingContext.step - 1);
+      renderOnboardingStep();
+      return;
+    }
+    if (onboardingContext.step < 4) {
+      onboardingContext.step += 1;
+      renderOnboardingStep();
+      return;
+    }
+    const member = organization().staffMembers.find(item => item.id === onboardingContext.staffId);
+    const workspace = payload.staffWorkspaces[onboardingContext.staffId];
+    const readiness = updateOnboardingStatus(workspace, member);
+    audit("Staff初期設定を完了", `${member.name}: ${readiness.completed}/${readiness.total}`, {
+      staffId: member.id
+    });
+    persistPayload();
+    document.getElementById("v71Onboarding").classList.add("hidden");
+    document.body.classList.remove("v71-modal-open");
+    onboardingContext = null;
+    state.page = "home";
+    organization().ui.pages[state.role] = "home";
+    save();
+    render();
   }
 
   function scopedStaffMembers(role = state.role) {
@@ -408,6 +825,30 @@
     head.after(context);
   }
 
+  function renderOnboardingBanner() {
+    if (state.page !== "home") return;
+    const root = document.getElementById("home");
+    const member = activeStaff();
+    const workspace = activeWorkspace();
+    if (!root || !member || !workspace) return;
+    const readiness = updateOnboardingStatus(workspace, member);
+    root.querySelector(".v71-ready-banner")?.remove();
+    if (readiness.operationReady) return;
+    const banner = document.createElement("section");
+    banner.className = `v71-ready-banner ${readiness.setupReady ? "startable" : ""}`;
+    const missing = readiness.missing.slice(0, 3).map(item => `<span>${safe(item.label)}</span>`).join("");
+    banner.innerHTML = `
+      <div class="v71-ready-ring" style="--p:${readiness.percent}"><b>${readiness.percent}%</b></div>
+      <div>
+        <small>${readiness.setupReady ? "READY TO PRACTICE" : "GROWTH SETUP"}</small>
+        <h2>${readiness.setupReady ? "最初のモデルを置けば、運用を始められます。" : "Visionから最初の問いまでを設計します。"}</h2>
+        <div class="v71-missing">${missing}</div>
+      </div>
+      <button class="btn primary" data-v7-action="open-onboarding" data-id="${safe(member.id)}">${readiness.setupReady ? "開始準備を完成" : "初期設定を続ける"}</button>
+    `;
+    root.prepend(banner);
+  }
+
   function renderIssueV70() {
     const root = document.getElementById("issue");
     if (!root || state.page !== "issue") return;
@@ -450,6 +891,7 @@
   function staffCard(member, options = {}) {
     const workspace = payload.staffWorkspaces[member.id];
     const metrics = workspaceMetrics(workspace);
+    const readiness = onboardingReadiness(member, workspace);
     const checkpoint = metrics.current;
     const nextModel = metrics.futureModels[0];
     const active = member.id === organization().activeStaffId;
@@ -460,6 +902,10 @@
           <span class="v7-progressbadge">${metrics.progress}%</span>
         </div>
         <div class="progress"><span style="width:${metrics.progress}%"></span></div>
+        <div class="v71-readiness ${readiness.operationReady ? "ready" : readiness.setupReady ? "startable" : ""}">
+          <span><b>${readiness.percent}%</b> 運用準備</span>
+          <small>${readiness.operationReady ? "運用準備完了" : `${readiness.missing[0]?.label || "設定"}を確認`}</small>
+        </div>
         <dl class="v7-stafffacts">
           <div><dt>現在地</dt><dd>${safe(checkpoint ? `${checkpoint.code} ${checkpoint.title}` : "未設定")}</dd></div>
           <div><dt>期限</dt><dd>${safe(workspace?.deadline || "未設定")} / ${metrics.daysLeft}日</dd></div>
@@ -470,13 +916,14 @@
         </dl>
         <div class="v7-cardactions">
           ${member.status === "active" ? `<button class="btn primary small" data-v7-action="select-staff" data-id="${safe(member.id)}">${options.management ? "個人詳細" : "このStaffを開く"}</button>` : ""}
+          ${member.status === "active" && (state.role === "management" || member.id === organization().activeStaffId) ? `<button class="btn secondary small" data-v7-action="open-onboarding" data-id="${safe(member.id)}">${readiness.operationReady ? "初期設定を確認" : "初期設定を続ける"}</button>` : ""}
           ${options.canEdit ? `<button class="btn secondary small" data-v7-action="edit-member" data-member-role="staff" data-id="${safe(member.id)}">編集</button>` : ""}
         </div>
       </article>
     `;
   }
 
-  function roleMemberCard(member) {
+  function roleMemberCard(member, options = {}) {
     const assigned = asArray(member.staffIds)
       .map(staffId => organization().staffMembers.find(staff => staff.id === staffId)?.name)
       .filter(Boolean);
@@ -485,7 +932,7 @@
         <div>${renderAvatar(member, "large")}<span><small>${safe(member.role.toUpperCase())}</small><h3>${safe(member.name)}</h3></span></div>
         <p>${safe(member.responsibility || "担当範囲未設定")}</p>
         <div class="v7-membertags">${assigned.length ? assigned.map(name => `<span>${safe(name)}</span>`).join("") : "<span>Staff未割当</span>"}</div>
-        <button class="btn secondary small" data-v7-action="edit-member" data-member-role="${safe(member.role)}" data-id="${safe(member.id)}">編集</button>
+        ${options.canEdit ? `<button class="btn secondary small" data-v7-action="edit-member" data-member-role="${safe(member.role)}" data-id="${safe(member.id)}">編集</button>` : ""}
       </article>
     `;
   }
@@ -495,6 +942,9 @@
     if (state.page !== "people") return;
     const org = organization();
     const canManage = state.role === "management";
+    const readyCount = org.staffMembers.filter(member =>
+      member.status === "active" && onboardingReadiness(member, payload.staffWorkspaces[member.id]).operationReady
+    ).length;
     root.innerHTML = `
       <div class="v7-pagehead">
         <div><div class="eyebrow">PEOPLE / TEAM</div><h1>誰が、誰の成長を支えるか。</h1><p class="lead">StaffのJourneyと、Support・Managementの担当範囲を一か所で管理します。</p></div>
@@ -502,15 +952,16 @@
       </div>
       <div class="v7-people-summary">
         <div><b>${org.staffMembers.filter(item => item.status === "active").length}</b><span>Active Staff</span></div>
+        <div><b>${readyCount}</b><span>Ready to Operate</span></div>
         <div><b>${org.supportMembers.filter(item => item.status === "active").length}</b><span>Support</span></div>
         <div><b>${org.managementMembers.filter(item => item.status === "active").length}</b><span>Management</span></div>
       </div>
       <div class="v7-sectionhead"><div><h2>Staff</h2><p>現在地・期限・Issue・次のモデル・Evidence・担当を一目で確認します。</p></div></div>
       <section class="v7-staffgrid">${org.staffMembers.map(member => staffCard(member, { canEdit: canManage })).join("")}</section>
       <div class="v7-sectionhead"><div><h2>Support</h2><p>判断修正を担当する人と対象Staff。</p></div></div>
-      <section class="v7-membergrid">${org.supportMembers.map(roleMemberCard).join("")}</section>
+      <section class="v7-membergrid">${org.supportMembers.map(member => roleMemberCard(member, { canEdit: canManage })).join("")}</section>
       <div class="v7-sectionhead"><div><h2>Management</h2><p>閲覧範囲・担当・監査主体を分離します。</p></div></div>
-      <section class="v7-membergrid">${org.managementMembers.map(roleMemberCard).join("")}</section>
+      <section class="v7-membergrid">${org.managementMembers.map(member => roleMemberCard(member, { canEdit: canManage })).join("")}</section>
     `;
   }
 
@@ -713,6 +1164,12 @@
     });
     persistPayload();
     closeMemberModal();
+    if (creating && role === "staff") {
+      applyActiveWorkspace(member.id, { role: state.role, page: "people" });
+      render();
+      openOnboarding(member.id);
+      return;
+    }
     render();
   }
 
@@ -767,7 +1224,10 @@
     root.innerHTML = `
       <div class="v7-pagehead">
         <div><div class="eyebrow">SETTINGS / GROWTH DESIGN</div><h1>Visionと時間から、やらないことを決める。</h1><p class="lead">${safe(staff?.name || "Staff")}の期限・勤務時間内キャパシティ・今回の問いを設定します。</p></div>
-        ${state.role === "management" ? `<button class="btn secondary" data-page="people">People / Team</button>` : ""}
+        <div class="v7-headbuttons">
+          ${canEdit ? `<button class="btn primary" data-v7-action="open-onboarding" data-id="${safe(staff?.id || "")}">初期設定を開く</button>` : ""}
+          ${state.role === "management" ? `<button class="btn secondary" data-page="people">People / Team</button>` : ""}
+        </div>
       </div>
       <div class="v7-settings-grid">
         <section class="card">
@@ -824,7 +1284,7 @@
     const checkpoint = currentCheckpoint();
     if (checkpoint) checkpoint.issue = state.issue.title;
     state.meta = state.meta || {};
-    state.meta.onboardingComplete = true;
+    updateOnboardingStatus(state, activeStaff());
     audit("Staff成長設定を変更", JSON.stringify({ previous, next: {
       vision: state.vision,
       deadline: state.deadline,
@@ -844,7 +1304,7 @@
     const blob = new Blob([JSON.stringify(exported, null, 2)], { type: "application/json" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `growth-os-v7-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `growth-os-v7-1-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   }
@@ -998,9 +1458,9 @@
   }
 
   function refreshVersion() {
-    document.title = "Growth OS v7.0";
+    document.title = "Growth OS v7.1";
     const badge = document.querySelector(".brand small");
-    if (badge) badge.textContent = "v7.0";
+    if (badge) badge.textContent = "v7.1";
   }
 
   function renderV70() {
@@ -1008,6 +1468,7 @@
     ensurePeoplePage();
     enhanceNavigation();
     renderSwitcher();
+    renderOnboardingBanner();
     renderIssueV70();
     renderSupportContext();
     renderPeopleV70();
@@ -1116,6 +1577,10 @@
       managementMode = "all";
       render();
     }
+    if (name === "open-onboarding") openOnboarding(action.dataset.id || activeStaff()?.id);
+    if (name === "close-onboarding") closeOnboarding();
+    if (name === "onboarding-back") moveOnboarding(-1);
+    if (name === "onboarding-next") moveOnboarding(1);
     if (name === "save-workspace-settings") saveWorkspaceSettings();
     if (name === "export-json") exportJsonV70();
     if (name === "choose-import") document.getElementById("v7Import")?.click();
@@ -1152,12 +1617,20 @@
     activeStaff: () => clone(activeStaff()),
     activeWorkspace: () => clone(activeWorkspace()),
     switchStaff,
+    onboardingReadiness: staffId => {
+      const member = organization().staffMembers.find(item => item.id === staffId);
+      return clone(onboardingReadiness(member, payload.staffWorkspaces[staffId]));
+    },
     exportPayload: () => Core.exportPayload(payload)
   };
 
   payload = readPayload();
-  for (const workspace of Object.values(payload.staffWorkspaces)) {
+  for (const [staffId, workspace] of Object.entries(payload.staffWorkspaces)) {
     normalizeWorkspaceRecords(workspace);
+    updateOnboardingStatus(
+      workspace,
+      organization().staffMembers.find(member => member.id === staffId)
+    );
   }
   const initialRole = organization().ui?.role || state.role || "staff";
   const initialPage = activePage(initialRole);
