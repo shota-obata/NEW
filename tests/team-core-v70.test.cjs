@@ -65,6 +65,9 @@ assert.equal(workspace.modelBookings.length, 1);
 assert.equal(workspace.practiceSessions.length, 1);
 assert.equal(workspace.supportSessions.length, 1);
 assert.equal(migrated.organization.library[0].image, legacy.library[0].image);
+assert.equal(migrated.organization.library[0].images.length, 1);
+assert.equal(migrated.organization.library[0].images[0].src, legacy.library[0].image);
+assert.equal(migrated.organization.library[0].images[0].label, "既存画像");
 assert.equal(migrated.organization.library[0].history.length, 1);
 assert.equal(migrated.organization.staffMembers[0].primarySupportId, supportId);
 assert.ok(migrated.organization.staffMembers[0].supportMemberIds.includes(supportId));
@@ -142,5 +145,27 @@ assert.ok(personalJourney.checkpoints.every(checkpoint => checkpoint.evidenceReq
 assert.ok(personalJourney.domains.some(domain => domain.id === "service" && domain.status === "focus"));
 assert.equal(Core.isDefaultJourney(Core.createWorkspace("blank", null, { blank: true }).journey), true);
 assert.equal(Core.isDefaultJourney(personalJourney), false);
+
+const comparisonAsset = Core.normalizeAsset({
+  id: "comparison-asset",
+  images: [
+    { src: "before.jpg", role: "before", label: "Before" },
+    { src: "after.jpg", role: "after", label: "After" },
+    { src: "detail.jpg", role: "detail", label: "Side" }
+  ],
+  comparison: { mode: "before-after", note: "シルエット比較" }
+}, 0);
+assert.equal(comparisonAsset.images.length, 3);
+assert.equal(comparisonAsset.image, "before.jpg");
+assert.equal(comparisonAsset.comparison.mode, "before-after");
+assert.equal(comparisonAsset.comparison.note, "シルエット比較");
+
+normalized.organization.library.push(comparisonAsset);
+const exported = Core.exportPayload(normalized);
+const reimported = Core.normalizeOrganizationPayload(JSON.parse(JSON.stringify(exported)));
+const reimportedComparison = reimported.organization.library.find(asset => asset.id === "comparison-asset");
+assert.equal(reimportedComparison.images.length, 3);
+assert.equal(reimportedComparison.images[1].role, "after");
+assert.equal(reimportedComparison.comparison.note, "シルエット比較");
 
 console.log("team-core-v70 tests passed");
