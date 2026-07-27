@@ -757,7 +757,9 @@
     if (!scoped.length || scoped.some(member => member.id === organization().activeStaffId)) return false;
     syncCurrentWorkspace();
     organization().activeStaffId = scoped[0].id;
-    applyActiveWorkspace(scoped[0].id, { role, page: state.page });
+    // The outgoing workspace was synced above. Syncing again after activeStaffId
+    // changes would write the old Staff state into the new Staff workspace.
+    applyActiveWorkspace(scoped[0].id, { role, page: state.page, skipSync: true });
     return true;
   }
 
@@ -1479,9 +1481,9 @@
   }
 
   function refreshVersion() {
-    document.title = "Growth OS v7.2";
+    document.title = "Growth OS v7.3";
     const badge = document.querySelector(".brand small");
-    if (badge) badge.textContent = "v7.2";
+    if (badge) badge.textContent = "v7.3";
   }
 
   function renderV70() {
