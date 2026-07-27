@@ -58,6 +58,8 @@ for (const member of [
   assert.ok(member.updatedAt);
 }
 assert.equal(workspace.vision, legacy.vision);
+assert.equal(workspace.visionProfile.statement, legacy.vision);
+assert.equal(workspace.visionProfile.version, 2);
 assert.equal(workspace.journey.checkpoints[0].evidenceItems.length, 1);
 assert.equal(workspace.modelBookings.length, 1);
 assert.equal(workspace.practiceSessions.length, 1);
@@ -80,6 +82,7 @@ assert.equal(normalized.staffWorkspaces["staff-2"].practiceSessions.length, 0);
 assert.equal(normalized.staffWorkspaces["staff-2"].onboarding.step, 0);
 assert.equal(normalized.staffWorkspaces["staff-2"].onboarding.confirmed.vision, false);
 assert.equal(normalized.staffWorkspaces["staff-2"].meta.onboardingComplete, false);
+assert.equal(normalized.staffWorkspaces["staff-2"].visionProfile.version, 2);
 assert.notEqual(normalized.staffWorkspaces["staff-2"].journey, workspace.journey);
 assert.equal(normalized.organization.activeStaffId, staffId);
 
@@ -98,11 +101,46 @@ const savedSecond = Core.workspaceFromState(
 );
 assert.equal(savedSecond.issue.title, "佐藤だけの問い");
 assert.equal(savedSecond.onboarding.arrivalDefinition, nextState.onboarding.arrivalDefinition);
+assert.equal(savedSecond.visionProfile.statement, nextState.vision);
 assert.equal(normalized.staffWorkspaces[staffId].issue.title, legacy.issue.title);
 assert.equal(nextState.library.length, 1);
 
 const oldJsonImported = Core.normalizeOrganizationPayload({ state: legacy }, legacy);
 assert.equal(oldJsonImported.organization.staffMembers.length, 1);
 assert.equal(oldJsonImported.staffWorkspaces[oldJsonImported.organization.activeStaffId].vision, legacy.vision);
+
+const routeSeed = Core.createWorkspace("staff-route", {
+  vision: "骨格と髪質を読み、安心感のある提案とカットを自力で完結する美容師",
+  deadline: "2027-04-30",
+  focusArea: "接客",
+  visionProfile: {
+    statement: "骨格と髪質を読み、安心感のある提案とカットを自力で完結する美容師",
+    targetCustomers: "似合う髪型が分からず不安な顧客",
+    customerValue: "安心して任せられる感覚",
+    technicalIdentity: "条件から設計できる",
+    serviceIdentity: "要望を提案へ変換できる",
+    humanIdentity: "不確実さを隠さない",
+    autonomyIdentity: "問いから検証を自走する",
+    arrivalDefinition: "異なる条件のモデル3名で接客から施術まで自力完結する",
+    priorityOrder: ["service", "technical", "autonomy", "human"]
+  },
+  onboarding: {
+    selfAssessment: { technical: 3, service: 2, human: 4, autonomy: 3 }
+  }
+});
+const personalJourney = Core.createPersonalJourney(routeSeed, { today: "2026-07-27" });
+assert.equal(personalJourney.version, 2);
+assert.equal(personalJourney.routeMode, "personalized");
+assert.equal(personalJourney.generatedFrom.focusDomain, "service");
+assert.ok(personalJourney.checkpoints.length >= 7);
+assert.equal(personalJourney.checkpoints[0].status, "current");
+assert.ok(personalJourney.checkpoints.some(checkpoint => checkpoint.type === "Diagnostic"));
+assert.ok(personalJourney.checkpoints.some(checkpoint => checkpoint.type === "Optional"));
+assert.ok(personalJourney.checkpoints.some(checkpoint => checkpoint.type === "Integration"));
+assert.equal(personalJourney.checkpoints.at(-1).date, "2027-04-30");
+assert.ok(personalJourney.checkpoints.every(checkpoint => checkpoint.evidenceRequirements.length));
+assert.ok(personalJourney.domains.some(domain => domain.id === "service" && domain.status === "focus"));
+assert.equal(Core.isDefaultJourney(Core.createWorkspace("blank", null, { blank: true }).journey), true);
+assert.equal(Core.isDefaultJourney(personalJourney), false);
 
 console.log("team-core-v70 tests passed");
