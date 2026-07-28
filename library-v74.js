@@ -4,6 +4,9 @@
   window.__growthLibraryV74 = true;
 
   const Core = window.GrowthTeamCore;
+  const commit = () => window.GrowthTeam?.commitState
+    ? window.GrowthTeam.commitState()
+    : save();
   const MODES = {
     "before-after": {
       label: "Before / After",
@@ -65,7 +68,7 @@
       return normalizeAsset(asset, index);
     });
     if (migrated) {
-      try { save(); } catch (_) { /* The editor will surface quota errors on the next write. */ }
+      try { commit(); } catch (_) { /* The editor will surface quota errors on the next write. */ }
     }
   }
 
@@ -178,7 +181,7 @@
                 ${previewMarkup(asset)}
               </button>
               <div class="v74-asset-body">
-                <div class="v74-asset-tags"><span>${safe(mode.label)}</span>${asset.tag ? `<i>${safe(asset.tag)}</i>` : ""}${incomplete ? "<em>あと1枚</em>" : ""}</div>
+                <div class="v74-asset-tags"><span>${safe(mode.label)}</span>${asset.tag ? `<i>${safe(asset.tag)}</i>` : ""}${asset.journeyConnection?.status === "connected" ? "<i>Journey接続済み</i>" : "<em>Journey未接続</em>"}${incomplete ? "<em>あと1枚</em>" : ""}</div>
                 <h2>${safe(asset.title)}</h2>
                 <p>${safe(asset.comparison?.note || asset.case || "比較から分かったことを記録してください。")}</p>
                 <dl>
@@ -222,6 +225,8 @@
                   <label class="wide"><span>比較から分かったこと</span><textarea id="v74ComparisonNote" placeholder="2枚以上を並べたことで見えた差・成長・判断の変化"></textarea></label>
                   <label><span>モデル予定と紐付け</span><select id="v74Model"></select></label>
                   <label><span>表示名</span><input id="v74ModelName" placeholder="モデル名 / Case名"></label>
+                  <label><span>Checkpointへ接続</span><select id="v74Checkpoint"></select></label>
+                  <label class="wide"><span>根拠となるEvidence</span><select id="v74Evidence" multiple size="4"></select></label>
                 </div>
               </section>
               <section class="v74-editor-section">
@@ -310,6 +315,19 @@
     document.getElementById("v74ModelName").value = modelName || "";
   }
 
+  function fillGrowthConnections(asset) {
+    const checkpointSelect = document.getElementById("v74Checkpoint");
+    const evidenceSelect = document.getElementById("v74Evidence");
+    const checkpoints = list(state.journey?.checkpoints);
+    const evidenceRecords = list(state.evidenceRecords);
+    checkpointSelect.innerHTML = `<option value="">Checkpointへ接続しない</option>${checkpoints.map(checkpoint => `
+      <option value="${safe(checkpoint.id)}" ${asset.checkpointId === checkpoint.id ? "selected" : ""}>${safe(`${checkpoint.code || ""} ${checkpoint.title || "Checkpoint"}`)}</option>
+    `).join("")}`;
+    evidenceSelect.innerHTML = evidenceRecords.map(evidence => `
+      <option value="${safe(evidence.id)}" ${list(asset.evidenceIds).includes(evidence.id) ? "selected" : ""}>${safe(`${evidence.createdAt?.slice?.(0, 10) || ""} ${evidence.judgment || evidence.title || "Evidence"}`)}</option>
+    `).join("") || `<option disabled>接続できるEvidenceはまだありません</option>`;
+  }
+
   function setReadOnly(readOnly) {
     document.querySelectorAll("#v74AssetModal input,#v74AssetModal textarea,#v74AssetModal select").forEach(field => {
       field.disabled = readOnly;
@@ -347,6 +365,7 @@
     document.getElementById("v74Rule").value = normalized.rule || "";
     document.getElementById("v74Next").value = normalized.next || "";
     fillModels(normalized.modelId || "", normalized.modelName || "");
+    fillGrowthConnections(normalized);
     document.getElementById("v74DeleteAsset").classList.toggle("hidden", !asset);
     document.getElementById("v74AssetHistory").innerHTML = list(normalized.history).length
       ? list(normalized.history).slice(-8).reverse().map(row => `<p><b>${safe(row.by || "System")}</b><span>${safe(row.action || "更新")}・${safe(row.at || "")}</span></p>`).join("")
@@ -460,6 +479,8 @@
     }
     const modelId = document.getElementById("v74Model").value;
     const model = list(state.modelBookings).find(item => item.id === modelId);
+    const checkpointId = document.getElementById("v74Checkpoint").value;
+    const evidenceIds = [...document.getElementById("v74Evidence").selectedOptions].map(option => option.value);
     const added = draftImages.filter(image => !initialImageIds.includes(image.id)).length;
     const removed = initialImageIds.filter(id => !draftImages.some(image => image.id === id)).length;
     const actionParts = [creating ? "作成" : "共同編集"];
@@ -474,6 +495,14 @@
     };
     asset.modelId = modelId;
     asset.modelName = document.getElementById("v74ModelName").value.trim() || model?.name || "";
+    asset.checkpointId = checkpointId;
+    asset.evidenceIds = evidenceIds;
+    asset.journeyConnection = {
+      status: checkpointId ? "connected" : "pending",
+      checkpointId,
+      connectedAt: checkpointId ? isoNow() : "",
+      connectedBy: checkpointId ? actor.actorName : ""
+    };
     asset.case = document.getElementById("v74Case").value.trim();
     asset.decision = document.getElementById("v74Decision").value.trim();
     asset.correction = document.getElementById("v74Correction").value.trim();
@@ -493,9 +522,15 @@
       staffId: actor.staffId,
       action: actionParts.join("・")
     }];
+    state.evidenceRecords = list(state.evidenceRecords).map(evidence => ({
+      ...evidence,
+      libraryAssetIds: evidenceIds.includes(evidence.id)
+        ? Array.from(new Set([...list(evidence.libraryAssetIds), asset.id]))
+        : list(evidence.libraryAssetIds).filter(id => id !== asset.id)
+    }));
     if (creating) state.library.unshift(asset);
     try {
-      save();
+      commit();
       closeAsset();
       render();
     } catch (_) {
@@ -507,8 +542,13 @@
   function deleteAsset() {
     if (!canEdit() || !editingAssetId) return;
     if (!confirm("このLibrary資産を削除しますか？画像と履歴も削除されます。")) return;
+    const removedId = editingAssetId;
     state.library = state.library.filter(item => item.id !== editingAssetId);
-    save();
+    state.evidenceRecords = list(state.evidenceRecords).map(evidence => ({
+      ...evidence,
+      libraryAssetIds: list(evidence.libraryAssetIds).filter(id => id !== removedId)
+    }));
+    commit();
     closeAsset();
     render();
   }
@@ -517,9 +557,9 @@
   render = function renderV74Library() {
     previousRender();
     renderLibraryV74();
-    document.title = "Growth OS v7.4";
+    document.title = "Growth OS v7.5";
     const badge = document.querySelector(".brand small");
-    if (badge) badge.textContent = "v7.4";
+    if (badge) badge.textContent = "v7.5";
   };
 
   document.addEventListener("input", event => {
@@ -572,7 +612,7 @@
     if (action === "choose-images") document.getElementById("v74ImageInput")?.click();
     if (action === "filter") {
       state.libraryUi.filter = button.dataset.filter;
-      save();
+      commit();
       renderLibraryV74();
     }
     if (action === "move-image") {

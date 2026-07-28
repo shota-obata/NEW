@@ -4,9 +4,9 @@
   window.__growthTeamV70 = true;
 
   const Core = window.GrowthTeamCore;
-  const STORAGE_KEY = "growthOS.organization.v7";
-  const ROLLBACK_KEY = "growthOS.organization.v7.rollback";
-  const legacySave = save;
+  const STORAGE_KEY = "growthOS.organization.v8";
+  const PREVIOUS_STORAGE_KEY = "growthOS.organization.v7";
+  const ROLLBACK_KEY = "growthOS.organization.v8.rollback";
   const legacyRender = render;
   const legacyShow = show;
   let payload;
@@ -25,13 +25,21 @@
   const clone = Core.clone;
   const stamp = () => new Date().toLocaleString("ja-JP", { hour12: false });
   const isoNow = Core.isoNow;
+  const workspaceVision = workspace => workspace?.visionProfile?.statement || "";
+  const workspaceQuestion = workspace => workspace?.currentQuestion?.text || "";
 
   function readPayload() {
     try {
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
       if (stored?.organization) return Core.normalizeOrganizationPayload(stored, state);
     } catch (_) {
-      // A malformed v7 snapshot must not hide the valid v6 state.
+      // A malformed v8 snapshot must not hide the previous valid state.
+    }
+    try {
+      const previous = JSON.parse(localStorage.getItem(PREVIOUS_STORAGE_KEY) || "null");
+      if (previous?.organization) return Core.normalizeOrganizationPayload(previous, state);
+    } catch (_) {
+      // Continue to legacy single-workspace migration.
     }
     return Core.migrateLegacy(state, {
       sourceKey: window.__growthHadStoredState ? "growthOS.unified.v5" : "v6-runtime",
@@ -182,10 +190,10 @@
     asArray(workspace.modelBookings).forEach(model => {
       model.staffId = model.staffId || staffId;
     });
+    asArray(workspace.evidenceRecords).forEach(evidence => {
+      evidence.staffId = evidence.staffId || staffId;
+    });
     asArray(workspace.journey?.checkpoints).forEach(checkpoint => {
-      asArray(checkpoint.evidenceItems).forEach(evidence => {
-        evidence.staffId = evidence.staffId || staffId;
-      });
       asArray(checkpoint.supportHistory).forEach(session => {
         const sessionSupportId = session.supportId || session.actorId || supportId;
         const sessionSupport = organization().supportMembers.find(member => member.id === sessionSupportId);
@@ -247,12 +255,14 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   }
 
-  save = function saveV70() {
+  function commitState() {
     syncCurrentWorkspace();
     persistPayload();
-    legacySave();
     updateSavedIndicator();
-  };
+  }
+
+  save = commitState;
+  window.save = commitState;
 
   function applyActiveWorkspace(staffId, options = {}) {
     const org = organization();
@@ -272,7 +282,6 @@
     state = Core.stateFromWorkspace(workspace, org.library, role, page);
     applyingWorkspace = false;
     persistPayload();
-    legacySave();
     return true;
   }
 
@@ -289,29 +298,21 @@
   }
 
   function currentCheckpoint(workspace = state) {
-    const checkpoints = asArray(workspace.journey?.checkpoints);
-    return checkpoints.find(checkpoint => checkpoint.status === "current") ||
-      checkpoints.find(checkpoint => checkpoint.status !== "done") ||
-      checkpoints[0] ||
-      null;
+    return Core.currentCheckpointOf(workspace?.journey);
   }
 
   function workspaceMetrics(workspace) {
     const checkpoints = asArray(workspace?.journey?.checkpoints);
-    const total = checkpoints.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
-    const actual = checkpoints.reduce((sum, item) => sum + (Number(item.actual) || 0), 0);
-    const progress = total
-      ? Math.min(100, Math.round(actual / total * 100))
-      : Math.max(0, Math.min(100, Number(workspace?.progress) || 0));
-    const planned = Math.max(0, Math.min(100, Number(workspace?.planned) || 0));
+    const metrics = Core.deriveJourneyMetrics(workspace);
+    const total = metrics.required;
+    const actual = metrics.actual;
+    const progress = metrics.progress;
+    const planned = metrics.planned;
     const deadline = workspace?.deadline ? new Date(`${workspace.deadline}T23:59:59`) : null;
     const daysLeft = deadline && !Number.isNaN(deadline.getTime())
       ? Math.max(0, Math.ceil((deadline - new Date()) / 86400000))
       : 0;
-    const evidence = checkpoints.reduce(
-      (sum, checkpoint) => sum + asArray(checkpoint.evidenceItems).length,
-      0
-    );
+    const evidence = asArray(workspace?.evidenceRecords).length;
     const practices = asArray(workspace?.practiceSessions);
     const support = asArray(workspace?.supportSessions);
     const futureModels = asArray(workspace?.modelBookings)
@@ -323,7 +324,7 @@
     const forecast = new Date(Date.now() + forecastDays * 86400000);
     const onTime = Boolean(deadline) && forecast <= deadline;
     const current = currentCheckpoint(workspace);
-    const evidenceMissing = !asArray(current?.evidenceItems).length;
+    const evidenceMissing = !asArray(current?.evidenceIds).length;
     return {
       total, actual, progress, planned, gap: progress - planned, daysLeft,
       evidence, practices, support, futureModels, forecast, onTime,
@@ -474,7 +475,7 @@
           <p>綺麗な言葉ではなく、誰に・何を・どう届けたいかを本人の言葉で決めます。</p>
         </div>
         <div class="v71-answer">
-          <label><span>なりたい美容師像</span><textarea id="v71Vision" placeholder="例：骨格と髪質を読み、顔まわりを安心して任せてもらえる美容師">${safe(workspace.vision === "なりたい美容師像を設定してください" ? "" : workspace.vision)}</textarea></label>
+          <label><span>なりたい美容師像</span><textarea id="v71Vision" placeholder="例：骨格と髪質を読み、顔まわりを安心して任せてもらえる美容師">${safe(workspaceVision(workspace) === "なりたい美容師像を設定してください" ? "" : workspaceVision(workspace))}</textarea></label>
           <label><span>お客様へ届けたい価値</span><textarea id="v71VisionValue" placeholder="施術後、お客様にどんな変化や感情を持ち帰ってほしい？">${safe(onboarding.visionValue || "")}</textarea></label>
           <label><span>なりたくない美容師像</span><textarea id="v71AvoidVision" placeholder="絶対に避けたい働き方・接客・技術姿勢">${safe(onboarding.avoidVision || "")}</textarea></label>
         </div>
@@ -532,11 +533,11 @@
       <div class="v71-question">
         <div class="eyebrow">START / 05</div>
         <h1 id="v71OnboardingTitle">最初の問いと、検証日を決める。</h1>
-        <p>Issue Aは苦手科目ではなく、次のCheckpointへ進むために今もっとも答える価値が高い問いです。</p>
+        <p>「今回の問い」は苦手科目ではなく、次のCheckpointへ進むために今もっとも答える価値が高い問いです。</p>
       </div>
       <div class="v71-answer">
         <label><span>Primary Support</span><select id="v71PrimarySupport"><option value="">選択してください</option>${personOptions("support", member.primarySupportId || workspace.primarySupportId)}</select></label>
-        <label><span>今回の問い</span><textarea id="v71Issue" placeholder="例：異なる骨格でも、完成像から顔まわりの基準点を自分で設定できるか">${safe(workspace.issue?.title?.includes("もっとも答える必要がある問いを設定する") ? "" : workspace.issue?.title || current?.issue || "")}</textarea></label>
+        <label><span>今回の問い</span><textarea id="v71Issue" placeholder="例：異なる骨格でも、完成像から顔まわりの基準点を自分で設定できるか">${safe(workspaceQuestion(workspace).includes("もっとも答える必要がある問いを設定する") ? "" : workspaceQuestion(workspace) || current?.issue || "")}</textarea></label>
         <div class="v71-model-start">
           <div><span>最初のモデル予定（あとからでも可）</span><small>予定を先に置くと、問いが実験へ変わります。</small></div>
           <div class="v71-model-fields">
@@ -599,7 +600,6 @@
     if (step === 0) {
       const vision = document.getElementById("v71Vision").value.trim();
       if (!meaningfulText(vision)) return alert("なりたい美容師像を、もう少し具体的に入力してください。"), false;
-      workspace.vision = vision;
       workspace.onboarding.visionValue = document.getElementById("v71VisionValue").value.trim();
       workspace.onboarding.avoidVision = document.getElementById("v71AvoidVision").value.trim();
       workspace.visionProfile = Core.normalizeVisionProfile(Object.assign(
@@ -660,14 +660,17 @@
       workspace.primarySupportId = supportId;
       workspace.supportMemberIds = member.supportMemberIds.slice();
       workspace.onboarding.confirmed.support = true;
-      workspace.issue = Object.assign({}, workspace.issue || {}, {
-        title: issue,
-        age: 0,
+      workspace.currentQuestion = Core.normalizeCurrentQuestion(Object.assign(
+        {},
+        workspace.currentQuestion || {},
+        {
+        text: issue,
+        checkpointId: currentCheckpoint(workspace)?.id || "",
         updatedAt: isoNow()
-      });
+        }
+      ), workspace, asArray(workspace.journey?.checkpoints));
       workspace.onboarding.confirmed.issue = true;
       const current = currentCheckpoint(workspace);
-      if (current) current.issue = issue;
       const modelName = document.getElementById("v71ModelName").value.trim();
       const modelDate = document.getElementById("v71ModelDate").value;
       if (modelName && modelDate) {
@@ -687,6 +690,7 @@
           menu: document.getElementById("v71ModelMenu").value,
           checkpointId: current?.id || "",
           checkpointCode: current?.code || "",
+          validationQuestion: issue,
           note: issue,
           updatedAt: isoNow()
         };
@@ -704,7 +708,6 @@
     updateOnboardingStatus(workspace, member);
     syncAssignments();
     persistPayload();
-    legacySave();
     return true;
   }
 
@@ -733,7 +736,7 @@
     onboardingContext = null;
     state.page = "home";
     organization().ui.pages[state.role] = "home";
-    save();
+    commitState();
     render();
   }
 
@@ -872,7 +875,7 @@
     if (!root || state.page !== "issue") return;
     const staff = activeStaff();
     const checkpoint = currentCheckpoint();
-    const evidenceCount = asArray(checkpoint?.evidenceItems).length;
+    const evidenceCount = asArray(state.evidenceRecords).filter(record => record.checkpointId === checkpoint?.id).length;
     const successConditions = asArray(state.issue?.successConditions);
     const conditions = successConditions.length ? successConditions : [
       checkpoint?.criteria || "到達条件をCheckpointで設定する",
@@ -881,7 +884,7 @@
     ];
     root.innerHTML = `
       <div class="v7-pagehead">
-        <div><div class="eyebrow">ISSUE A / 今回の問い</div><h1>今、答える価値が最も高い問い。</h1><p class="lead">Visionと期限から逆算し、次のモデルで検証できる一問に絞ります。</p></div>
+        <div><div class="eyebrow">CURRENT QUESTION / 今回の問い</div><h1>今、答える価値が最も高い問い。</h1><p class="lead">Visionと期限から逆算し、次のモデルで検証できる一問に絞ります。</p></div>
         <button class="btn secondary" data-page="journey">Journeyで位置を確認</button>
       </div>
       <section class="v7-issue-main">
@@ -990,7 +993,7 @@
     if (metrics.gap < -8) return { level: "warning", text: "進捗遅延" };
     if (metrics.evidenceMissing) return { level: "warning", text: "Evidence不足" };
     if (!metrics.futureModels.length) return { level: "warning", text: "モデル未設定" };
-    if (Number(workspace?.issue?.age) >= 14) return { level: "warning", text: "Issue停滞" };
+    if (Number(workspace?.currentQuestion?.age) >= 14) return { level: "warning", text: "問いの停滞" };
     return { level: "good", text: "計画線上" };
   }
 
@@ -1041,7 +1044,7 @@
     });
     root.innerHTML = `
       <div class="v7-pagehead">
-        <div><div class="eyebrow">MANAGEMENT / ORGANIZATION</div><h1>人ではなく、止まっている構造を見る。</h1><p class="lead">期限超過・Issue停滞・過剰介入・Evidence不足をStaff横断で見つけます。</p></div>
+        <div><div class="eyebrow">MANAGEMENT / ORGANIZATION</div><h1>人ではなく、止まっている構造を見る。</h1><p class="lead">期限超過・問いの停滞・過剰介入・Evidence不足をStaff横断で見つけます。</p></div>
         <button class="btn secondary" data-page="people">People / Team</button>
       </div>
       <div class="v7-management-metrics">
@@ -1251,16 +1254,16 @@
         <section class="card">
           <div class="title">STAFF WORKSPACE</div>
           <div class="v7-form">
-              <label><span>なりたい美容師像</span><textarea id="v7Vision" ${disabled}>${safe(state.vision)}</textarea></label>
+              <label><span>なりたい美容師像</span><textarea id="v7Vision" ${disabled}>${safe(state.visionProfile?.statement || "")}</textarea></label>
             <div class="v7-formrow">
               <label><span>到達期限</span><input id="v7Deadline" type="date" value="${safe(state.deadline)}" ${disabled}></label>
               <label><span>勤務時間内で使える時間 / 週</span><input id="v7Hours" type="number" min="0" step=".5" value="${Number(state.hours) || 0}" ${disabled}></label>
             </div>
             <div class="v7-formrow">
               <label><span>重点領域</span><select id="v7Focus" ${disabled}>${["技術", "接客", "人間力", "判断力", "自走力"].map(value => `<option ${state.focusArea === value ? "selected" : ""}>${value}</option>`).join("")}</select></label>
-              <label><span>計画進捗</span><input id="v7Planned" type="number" min="0" max="100" value="${Number(state.planned) || 0}" ${disabled}></label>
+              <label><span>計画進捗（期限から自動算出）</span><input type="number" value="${Number(state.planned) || 0}" disabled></label>
             </div>
-            <label><span>Issue A / 今回の問い</span><textarea id="v7Issue" ${disabled}>${safe(state.issue?.title || "")}</textarea></label>
+            <label><span>今回の問い</span><textarea id="v7Issue" ${disabled}>${safe(state.currentQuestion?.text || "")}</textarea></label>
           </div>
           ${canEdit ? `<button class="btn primary" data-v7-action="save-workspace-settings">このStaffの設定を保存</button>` : `<p class="lead">SupportはPeople / TeamとStaff設定を閲覧できます。変更はStaff本人またはManagementが行います。</p>`}
         </section>
@@ -1273,8 +1276,8 @@
             <input class="hidden" id="v7Import" type="file" accept="application/json,.json">
           </section>
           <section class="card v7-schema">
-            <div class="title">DATA MODEL v7</div>
-            <p>Organization → People → Staff Workspaces。Libraryは店舗共有、Journey・Practice・Evidence・Support履歴はStaff別です。</p>
+            <div class="title">DATA MODEL v8 / Growth OS v7.5</div>
+            <p>Organization → People → Staff Workspaces。今回の問い・Evidence・Journey UpdateはStaff別の単一データとして保存します。</p>
           </section>
         </aside>
       </div>
@@ -1283,40 +1286,43 @@
 
   function saveWorkspaceSettings() {
     const previous = {
-      vision: state.vision,
+      vision: state.visionProfile?.statement,
       deadline: state.deadline,
       hours: state.hours,
       focusArea: state.focusArea,
-      planned: state.planned,
-      issue: state.issue?.title
+      issue: state.currentQuestion?.text
     };
-    state.vision = document.getElementById("v7Vision").value.trim();
     state.visionProfile = Core.normalizeVisionProfile(Object.assign(
       {},
       state.visionProfile || {},
-      { statement: state.vision, updatedAt: isoNow() }
+      { statement: document.getElementById("v7Vision").value.trim(), updatedAt: isoNow() }
     ), state);
+    state.vision = state.visionProfile.statement;
     state.deadline = document.getElementById("v7Deadline").value;
     state.hours = Math.max(0, Number(document.getElementById("v7Hours").value) || 0);
     state.overtimeHours = 0;
     state.focusArea = document.getElementById("v7Focus").value;
-    state.planned = Math.max(0, Math.min(100, Number(document.getElementById("v7Planned").value) || 0));
-    state.issue = state.issue || {};
-    state.issue.title = document.getElementById("v7Issue").value.trim();
-    state.issue.updatedAt = isoNow();
     const checkpoint = currentCheckpoint();
-    if (checkpoint) checkpoint.issue = state.issue.title;
+    state.currentQuestion = Core.normalizeCurrentQuestion(Object.assign(
+      {},
+      state.currentQuestion || {},
+      {
+        text: document.getElementById("v7Issue").value.trim(),
+        checkpointId: checkpoint?.id || "",
+        updatedAt: isoNow()
+      }
+    ), state, asArray(state.journey?.checkpoints));
+    state.issue = Object.assign({}, state.currentQuestion, { title: state.currentQuestion.text });
     state.meta = state.meta || {};
     updateOnboardingStatus(state, activeStaff());
     audit("Staff成長設定を変更", JSON.stringify({ previous, next: {
-      vision: state.vision,
+      vision: state.visionProfile.statement,
       deadline: state.deadline,
       hours: state.hours,
       focusArea: state.focusArea,
-      planned: state.planned,
-      issue: state.issue.title
+      issue: state.currentQuestion.text
     }}));
-    save();
+    commitState();
     render();
   }
 
@@ -1327,7 +1333,7 @@
     const blob = new Blob([JSON.stringify(exported, null, 2)], { type: "application/json" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `growth-os-v7-2-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `growth-os-v7-5-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   }
@@ -1397,7 +1403,7 @@
         asset.id,
         asArray(asset.history).length
       ])),
-      evidenceLength: asArray(checkpoint?.evidenceItems).length,
+      evidenceLength: asArray(state.evidenceRecords).length,
       auditLength: organization().auditLog.length
     };
   }
@@ -1428,11 +1434,10 @@
       session.by = support?.name || "Support";
       changed = true;
     });
-    const checkpoint = currentCheckpoint();
-    asArray(checkpoint?.evidenceItems).slice(before.evidenceLength).forEach(evidence => {
+    asArray(workspace.evidenceRecords).slice(before.evidenceLength).forEach(evidence => {
       evidence.staffId = before.staffId;
       evidence.actorId = context.actorId;
-      evidence.by = context.actorName;
+      evidence.createdBy = context.actorName;
       changed = true;
     });
     asArray(workspace.library).forEach(asset => {
@@ -1468,7 +1473,7 @@
       } else if (before.action.includes("asset")) {
         audit("Library資産を更新", "", { staffId: before.staffId });
       }
-      save();
+      commitState();
       render();
     }
   }
@@ -1481,9 +1486,9 @@
   }
 
   function refreshVersion() {
-    document.title = "Growth OS v7.4";
+    document.title = "Growth OS v7.5";
     const badge = document.querySelector(".brand small");
-    if (badge) badge.textContent = "v7.4";
+    if (badge) badge.textContent = "v7.5";
   }
 
   function renderV70() {
@@ -1573,7 +1578,7 @@
     if (pageNode && pageNode.dataset.page === "people") {
       state.page = "people";
       organization().ui.pages[state.role] = "people";
-      save();
+      commitState();
       render();
       return;
     }
@@ -1617,7 +1622,7 @@
       captureActionSnapshot("management-settings");
       setTimeout(() => {
         audit("Managementが成長設定を変更", state.issue?.title || "");
-        save();
+        commitState();
       }, 0);
     }
   }, true);
@@ -1639,6 +1644,7 @@
     getPayload: () => clone(payload),
     activeStaff: () => clone(activeStaff()),
     activeWorkspace: () => clone(activeWorkspace()),
+    commitState,
     switchStaff,
     onboardingReadiness: staffId => {
       const member = organization().staffMembers.find(item => item.id === staffId);
@@ -1659,8 +1665,9 @@
   const initialPage = activePage(initialRole);
   applyActiveWorkspace(organization().activeStaffId, {
     role: initialRole,
-    page: initialPage
+    page: initialPage,
+    skipSync: true
   });
-  save();
+  commitState();
   render();
 })();

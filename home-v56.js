@@ -39,10 +39,10 @@
     const support=cp?.supportHistory?.length||0;
     const models=nextModelsV56();
     const next=models[0]||null;
-    const issue=state?.issue?.title||cp?.issue||'Issue Aはまだ設定されていません。';
+    const issue=state?.issue?.title||cp?.issue||'今回の問いはまだ設定されていません。';
     const vision=state?.vision||'Visionを設定してください。';
-    const nextAction=next?`${next.name||next.modelName||'モデル'}で「${next.theme||next.memo||issue}」を検証する`:(cp?`${cp.title||'Current Checkpoint'}のEvidenceを1件追加する`:'JourneyでCurrent Checkpointを設定する');
-    const modelCards=models.slice(0,3).map(x=>`<button class="home56-model" data-page="planner"><span class="home56-date">${safe(dateLabelV56(x.date||x.startDate))}</span><span class="home56-modelbody"><b>${safe(x.name||x.modelName||'名称未設定')}</b><small>${safe([x.time||x.startTime,x.menu,x.theme||x.memo].filter(Boolean).join(' ・ ')||'詳細未設定')}</small></span><span class="home56-arrow">›</span></button>`).join('');
+    const nextAction=next?`${next.name||next.modelName||'モデル'}で「${next.validationQuestion||next.note||next.theme||next.memo||issue}」を検証する`:(cp?`${cp.title||'Current Checkpoint'}のEvidenceを1件追加する`:'JourneyでCurrent Checkpointを設定する');
+    const modelCards=models.slice(0,3).map(x=>`<button class="home56-model" data-page="planner"><span class="home56-date">${safe(dateLabelV56(x.date||x.startDate))}</span><span class="home56-modelbody"><b>${safe(x.name||x.modelName||'名称未設定')}</b><small>${safe([x.time||x.startTime,x.menu,x.validationQuestion||x.note||x.theme||x.memo].filter(Boolean).join(' ・ ')||'詳細未設定')}</small></span><span class="home56-arrow">›</span></button>`).join('');
     root.innerHTML=`
       <div class="home56-topline">
         <div><div class="eyebrow">TODAY / STAFF HOME</div><h1>今日の判断を、ひとつに絞る。</h1><p class="lead">Journeyの現在地から、今日やることと次のモデル検証をつなぎます。</p></div>
@@ -75,12 +75,12 @@
 
         <article class="home56-card home56-nextmodel">
           <div class="home56-cardhead"><div><span class="home56-label">NEXT MODEL</span><h3>${safe(next?.name||next?.modelName||'モデル予定なし')}</h3></div><button class="home56-iconbtn" data-page="planner">›</button></div>
-          ${next?`<div class="home56-modeltime"><b>${safe(dateLabelV56(next.date||next.startDate))}</b><span>${safe(next.time||next.startTime||'時間未設定')}</span></div><p>${safe(next.theme||next.memo||next.menu||'検証テーマ未設定')}</p>`:'<p>Model Plannerで先にモデルを押さえ、Checkpointと検証テーマを割り当てます。</p>'}
+          ${next?`<div class="home56-modeltime"><b>${safe(dateLabelV56(next.date||next.startDate))}</b><span>${safe(next.time||next.startTime||'時間未設定')}</span></div><p>${safe(next.validationQuestion||next.note||next.theme||next.memo||next.menu||'検証テーマ未設定')}</p>`:'<p>Model Plannerで先にモデルを押さえ、Checkpointと検証テーマを割り当てます。</p>'}
           <button class="btn secondary home56-wide" data-page="planner">Model Plannerを開く</button>
         </article>
 
         <article class="home56-card home56-issue">
-          <span class="home56-label">ISSUE A</span><h3>${safe(issue)}</h3><p>不足を責めるのではなく、次の検証で解像度を上げるための問い。</p>
+          <span class="home56-label">今回の問い</span><h3>${safe(issue)}</h3><p>不足を責めるのではなく、次の検証で解像度を上げるための問い。</p>
           <button class="btn secondary home56-wide" data-page="support">Supportで深掘り</button>
         </article>
       </section>

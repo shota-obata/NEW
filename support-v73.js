@@ -4,6 +4,9 @@
   window.__growthSupportV73 = true;
 
   const Core = window.GrowthTeamCore;
+  const commit = () => window.GrowthTeam?.commitState
+    ? window.GrowthTeam.commitState()
+    : save();
   const GAP_TYPES = [
     { id: "recognition", label: "観察・認識", short: "見えていない", hint: "骨格・髪質・顧客の言葉など、判断に必要な情報を拾えているか。" },
     { id: "criteria", label: "判断基準", short: "基準が曖昧", hint: "何を根拠に良否や基準点を決めるか、条件が言語化されているか。" },
@@ -270,18 +273,26 @@
     });
 
     if (mode === "apply" || mode === "library") {
-      state.issue = Object.assign({}, state.issue || {}, {
-        title: value.nextIssue,
-        previousTitle: value.issueBefore,
+      state.currentQuestion = Core.normalizeCurrentQuestion(Object.assign(
+        {},
+        state.currentQuestion || {},
+        {
+          text: value.nextIssue,
+          previousText: value.issueBefore,
+          checkpointId: checkpoint.id,
+          whyNow: value.diagnosis,
+          successConditions: value.successConditions,
+          nextTest: value.nextCondition,
+          updatedAt: value.createdAt,
+          updatedBy: value.supportName
+        }
+      ), state, list(state.journey?.checkpoints));
+      state.issue = Object.assign({}, state.currentQuestion, {
+        title: state.currentQuestion.text,
         gapType: value.gapType,
         gapLabel: value.gapLabel,
-        successConditions: value.successConditions,
-        nextCondition: value.nextCondition,
-        supportQuestion: value.supportQuestion,
-        updatedAt: value.createdAt,
-        updatedBy: value.supportName
+        supportQuestion: value.supportQuestion
       });
-      checkpoint.issue = value.nextIssue;
       checkpoint.successConditions = value.successConditions;
       checkpoint.nextCondition = value.nextCondition;
       checkpoint.gapType = value.gapType;
@@ -296,7 +307,7 @@
       state.libraryRefs = Array.from(new Set([...list(state.libraryRefs), asset.id]));
     }
 
-    save();
+    commit();
     render();
   }
 
@@ -366,7 +377,7 @@
         </div>
         <i>›</i>
         <div class="v73-path-issue">
-          <span>ISSUE A / 今回の問い</span>
+          <span>今回の問い</span>
           <b>${safe(state.issue?.title || checkpoint?.issue || "未設定")}</b>
         </div>
       </section>
@@ -427,7 +438,7 @@
           <section class="v73-workspace v73-next">
             <header><div><span>04 / NEXT TEST</span><h2>次のモデルで、答えられる問いにする。</h2></div></header>
             <label class="v73-field">
-              <span>次のIssue A｜今回の問い</span>
+              <span>次の問い</span>
               <textarea id="v73NextIssue" class="v73-small-textarea" placeholder="例：異なる骨格でも、完成像から最短点と最長点を自力で設定できるか。">${safe(state.issue?.title || checkpoint?.issue || "")}</textarea>
             </label>
             <div class="v73-two-fields">
@@ -445,7 +456,7 @@
           <footer class="v73-actions">
             <button class="btn secondary" data-v73-action="save">判断修正を保存</button>
             <button class="btn secondary" data-v73-action="library">Libraryへ資産化</button>
-            <button class="btn primary" data-v73-action="apply">次のIssueへ反映</button>
+            <button class="btn primary" data-v73-action="apply">次の問いへ反映</button>
           </footer>
         </main>
 
