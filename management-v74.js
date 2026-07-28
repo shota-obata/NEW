@@ -28,10 +28,9 @@
   }
 
   function currentCheckpoint(workspace) {
-    const checkpoints = list(workspace?.journey?.checkpoints);
-    return checkpoints.find(item => item.status === "current") ||
-      checkpoints.find(item => item.status !== "done") ||
-      checkpoints[0] || null;
+    return Core.currentCheckpointOf
+      ? Core.currentCheckpointOf(workspace?.journey)
+      : list(workspace?.journey?.checkpoints).find(item => item.status === "current") || null;
   }
 
   function countRequirements(checkpoint) {
@@ -45,10 +44,10 @@
   function lastActivity(workspace, checkpoint) {
     const candidates = [
       workspace?.meta?.updatedAt,
-      workspace?.issue?.updatedAt,
+      workspace?.currentQuestion?.updatedAt,
       checkpoint?.updatedAt,
       ...list(checkpoint?.history).map(item => item.at),
-      ...list(checkpoint?.evidenceItems).map(item => item.at || item.createdAt),
+      ...list(workspace?.evidenceRecords).filter(item => item.checkpointId === checkpoint?.id).map(item => item.createdAt),
       ...list(workspace?.practiceSessions).map(item => item.at || item.updatedAt || item.createdAt),
       ...list(workspace?.supportSessions).map(item => item.at || item.updatedAt || item.createdAt)
     ].filter(Boolean).map(value => new Date(value)).filter(date => !Number.isNaN(date.getTime()));
@@ -74,19 +73,20 @@
     const workspace = payload.staffWorkspaces[member.id] || {};
     const checkpoint = currentCheckpoint(workspace);
     const checkpoints = list(workspace.journey?.checkpoints);
-    const totalHours = checkpoints.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
-    const actualHours = checkpoints.reduce((sum, item) => sum + (Number(item.actual) || 0), 0);
-    const progress = totalHours
-      ? Math.min(100, Math.round(actualHours / totalHours * 100))
-      : Math.max(0, Math.min(100, Number(workspace.progress) || 0));
-    const planned = Math.max(0, Math.min(100, Number(workspace.planned) || 0));
+    const metrics = Core.deriveJourneyMetrics
+      ? Core.deriveJourneyMetrics(workspace)
+      : { required: 0, actual: 0, progress: 0, planned: 0 };
+    const totalHours = metrics.required;
+    const actualHours = metrics.actual;
+    const progress = metrics.progress;
+    const planned = metrics.planned;
     const gap = progress - planned;
     const daysLeft = daysUntil(workspace.deadline);
     const weeklyHours = Math.max(.1, Number(workspace.hours) || 0);
     const remainingHours = Math.max(0, totalHours - actualHours);
     const capacityHours = Math.max(0, daysLeft / 7 * weeklyHours);
     const capacityGap = Math.round((capacityHours - remainingHours) * 10) / 10;
-    const evidenceCount = list(checkpoint?.evidenceItems).length;
+    const evidenceCount = list(workspace.evidenceRecords).filter(item => item.checkpointId === checkpoint?.id).length;
     const evidenceRequired = countRequirements(checkpoint);
     const evidenceCoverage = Math.min(100, Math.round(evidenceCount / Math.max(1, evidenceRequired) * 100));
     const practices = list(workspace.practiceSessions);
@@ -99,7 +99,7 @@
       .sort((a, b) => `${a.date || ""}${a.time || ""}`.localeCompare(`${b.date || ""}${b.time || ""}`));
     const nextModel = futureModels[0] || null;
     const activity = lastActivity(workspace, checkpoint);
-    const issueAge = Number(workspace.issue?.age) || daysBetween(workspace.issue?.updatedAt || activity);
+    const issueAge = Number(workspace.currentQuestion?.age) || daysBetween(workspace.currentQuestion?.updatedAt || activity);
     const stagnationDays = activity ? daysBetween(activity) : issueAge;
     const assets = list(payload.organization.library).filter(asset =>
       list(asset.staffIds).includes(member.id)
@@ -118,7 +118,7 @@
     } else if (workspace.deadline && daysLeft < 0) {
       add("critical", "到達期限を超過", "期限後もJourneyが完了していません。", "Vision到達条件と期限を再設定する");
     } else if (gap <= -10) {
-      add("warning", "予定地点から遅れている", `計画より${Math.abs(gap)}%後ろです。`, "現在のIssueへ効くPracticeだけに絞る");
+      add("warning", "予定地点から遅れている", `計画より${Math.abs(gap)}%後ろです。`, "今回の問いへ効くPracticeだけに絞る");
     }
     if (stagnationDays >= 14 || issueAge >= 14) {
       add("warning", "同じ問いが停滞", `${Math.max(stagnationDays, issueAge)}日間、現在地の更新が弱い状態です。`, "Issue仮説か検証条件をSupportと見直す");
@@ -127,7 +127,7 @@
       add("notice", "Evidenceが不足", `Current Checkpointの確認は${evidenceCount}/${evidenceRequired}件です。`, "次のモデルを不足Evidenceへ割り当てる");
     }
     if (!futureModels.length) {
-      add("warning", "次のモデルが未設定", "Issueへ答える実践機会が予定されていません。", "Model Plannerへ検証モデルを置く");
+      add("warning", "次のモデルが未設定", "今回の問いへ答える実践機会が予定されていません。", "Model Plannerへ検証モデルを置く");
     }
     if (practices.length >= 2 && supportRatio >= 75) {
       add("warning", "Support介入が高止まり", `Practiceに対するSupport介入率が${supportRatio}%です。`, "次回はSupport Levelを一段下げる");
@@ -164,7 +164,7 @@
           <div class="v74-manager-ring" style="--p:${row.progress}"><b>${row.progress}%</b></div>
         </div>
         <div class="v74-management-route">
-          <span>VISION</span><b>${safe(row.workspace.vision || "未設定")}</b>
+          <span>VISION</span><b>${safe(row.workspace.visionProfile?.statement || "未設定")}</b>
           <i>→</i><span>CURRENT</span><b>${safe(cp ? `${cp.code} ${cp.title}` : "未設定")}</b>
         </div>
         <div class="v74-management-alert">
@@ -217,7 +217,7 @@
       </section>
       <nav class="v74-management-filters">
         ${[
-          ["all", "すべて"], ["risk", "要確認"], ["stalled", "Issue停滞"],
+          ["all", "すべて"], ["risk", "要確認"], ["stalled", "問いの停滞"],
           ["support", "介入過多"], ["library", "資産化停止"]
         ].map(([id, label]) => `<button class="${filter === id ? "active" : ""}" data-v74-management="filter" data-filter="${id}">${label}</button>`).join("")}
       </nav>
@@ -238,13 +238,13 @@
         <button class="btn secondary" data-v74-management="all">全体一覧へ</button>
       </header>
       <section class="v74-management-detail-hero ${row.primary.type}">
-        <div><span>${statusLabel(row.primary.type)}</span><h2>${safe(row.workspace.vision || "Vision未設定")}</h2><p>${safe(row.workspace.issue?.title || cp?.issue || "今回の問い未設定")}</p></div>
+        <div><span>${statusLabel(row.primary.type)}</span><h2>${safe(row.workspace.visionProfile?.statement || "Vision未設定")}</h2><p>${safe(row.workspace.currentQuestion?.text || "今回の問い未設定")}</p></div>
         <div class="v74-manager-ring large" style="--p:${row.progress}"><b>${row.progress}%</b><small>JOURNEY</small></div>
       </section>
       <section class="v74-decision-path">
         <div><span>01 VISION</span><b>${safe(row.workspace.deadline || "期限未設定")}</b><p>${row.daysLeft}日</p></div>
         <i>→</i><div><span>02 CURRENT</span><b>${safe(cp ? `${cp.code} ${cp.title}` : "未設定")}</b><p>${row.actualHours}/${row.totalHours}h</p></div>
-        <i>→</i><div><span>03 ISSUE</span><b>${safe(row.workspace.issue?.title || "未設定")}</b><p>${row.issueAge}日</p></div>
+        <i>→</i><div><span>03 QUESTION</span><b>${safe(row.workspace.currentQuestion?.text || "未設定")}</b><p>${row.issueAge}日</p></div>
         <i>→</i><div><span>04 NEXT</span><b>${safe(row.primary.action)}</b><p>Management判断</p></div>
       </section>
       <div class="v74-management-detail-grid">

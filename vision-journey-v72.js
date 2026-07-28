@@ -4,6 +4,9 @@
   window.__growthVisionJourneyV72 = true;
 
   const Core = window.GrowthTeamCore;
+  const commit = () => window.GrowthTeam?.commitState
+    ? window.GrowthTeam.commitState()
+    : save();
   const safeText = value => typeof esc === "function"
     ? esc(String(value ?? ""))
     : String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -50,12 +53,14 @@
     const canGenerate = Boolean(state.meta.onboardingComplete && meaningfulVision());
     if (canGenerate && Core.isDefaultJourney(state.journey)) {
       state.journey = Core.createPersonalJourney(state);
-      state.issue = Object.assign({}, state.issue || {}, {
-        title: currentCheckpoint()?.issue || state.issue?.title || "",
+      state.currentQuestion = Core.normalizeCurrentQuestion({
+        text: currentCheckpoint()?.issue || state.currentQuestion?.text || "",
+        checkpointId: currentCheckpoint()?.id || "",
         successConditions: list(currentCheckpoint()?.successConditions),
         updatedAt: Core.isoNow()
-      });
-      save();
+      }, state, list(state.journey?.checkpoints));
+      state.issue = Object.assign({}, state.currentQuestion, { title: state.currentQuestion.text });
+      commit();
     }
   }
 
@@ -299,7 +304,7 @@
           <h2>${safeText(current ? `${current.code}｜${current.title}` : "Checkpoint未設定")}</h2>
           <p>${safeText(current?.criteria || "到達条件を設定してください")}</p>
           <div class="v72-current-question">
-            <small>ISSUE A / 今回の問い</small>
+            <small>今回の問い</small>
             <b>${safeText(state.issue?.title || current?.issue || "今回の問いを設定してください")}</b>
           </div>
           <div class="v72-head-actions">
@@ -482,7 +487,7 @@
     state.onboarding.avoidVision = state.visionProfile.avoidVision;
     state.onboarding.arrivalDefinition = state.visionProfile.arrivalDefinition;
     state.meta = Object.assign({}, state.meta || {}, { visionVersion: 2 });
-    save();
+    commit();
     closeModal("v72VisionModal");
     render();
   }
@@ -522,16 +527,16 @@
       }
     ];
     state.journey = journeyPreview;
-    state.progress = 0;
-    state.planned = 0;
     const current = currentCheckpoint();
-    state.issue = Object.assign({}, state.issue || {}, {
-      title: current?.issue || "",
+    state.currentQuestion = Core.normalizeCurrentQuestion({
+      text: current?.issue || "",
+      checkpointId: current?.id || "",
       successConditions: list(current?.successConditions),
       updatedAt: Core.isoNow()
-    });
+    }, state, list(state.journey?.checkpoints));
+    state.issue = Object.assign({}, state.currentQuestion, { title: state.currentQuestion.text });
     journeyPreview = null;
-    save();
+    commit();
     closeModal("v72JourneyModal");
     state.page = "journey";
     render();
@@ -583,7 +588,7 @@
     if (!event.target.closest('[data-action="complete-checkpoint"], [data-action="set-current-checkpoint"]')) return;
     setTimeout(() => {
       unlockNextCheckpoint();
-      save();
+      commit();
       render();
     }, 0);
   });

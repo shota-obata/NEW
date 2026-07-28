@@ -5,12 +5,13 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createGrowthTeamCore() {
   "use strict";
 
-  const SCHEMA_VERSION = 7;
+  const SCHEMA_VERSION = 8;
   const WORKSPACE_KEYS = [
-    "vision", "visionProfile", "deadline", "hours", "overtimeHours", "focusArea",
-    "progress", "planned", "issue", "journey", "modelBookings",
+    "visionProfile", "deadline", "hours", "overtimeHours", "focusArea",
+    "currentQuestion", "journey", "modelBookings",
     "practiceSessions", "supportSessions", "practiceDraft", "libraryUi",
-    "libraryRefs", "onboarding", "meta"
+    "libraryRefs", "evidenceRecords", "journeyUpdates", "supportRequests",
+    "onboarding", "meta"
   ];
 
   function clone(value) {
@@ -81,6 +82,136 @@
   function cleanText(value, fallback) {
     const text = String(value || "").trim();
     return text || fallback || "";
+  }
+
+  function currentCheckpointOf(journey) {
+    const checkpoints = asArray(journey?.checkpoints);
+    return checkpoints.find(item => item.id === journey?.currentCheckpointId) ||
+      checkpoints.find(item => item.status === "current") ||
+      checkpoints.find(item => item.status !== "done") ||
+      checkpoints[0] ||
+      null;
+  }
+
+  function normalizeCurrentQuestion(question, workspace, checkpoints) {
+    const source = question && typeof question === "object" ? clone(question) : {};
+    const legacy = workspace?.issue && typeof workspace.issue === "object"
+      ? workspace.issue
+      : {};
+    const checkpoint = currentCheckpointOf({
+      checkpoints,
+      currentCheckpointId: workspace?.journey?.currentCheckpointId
+    });
+    const text = cleanText(
+      source.text || source.title || legacy.title || checkpoint?.issue,
+      "次のCheckpointへ進むため、今もっとも答える必要がある問いを設定する"
+    );
+    return {
+      id: source.id || uid("question", `${workspace?.staffId || "staff"}-${text}`),
+      text,
+      checkpointId: source.checkpointId || checkpoint?.id || "",
+      whyNow: cleanText(source.whyNow || legacy.whyNow),
+      evidenceIds: asArray(source.evidenceIds || legacy.evidenceIds),
+      successConditions: asArray(
+        source.successConditions ||
+        legacy.successConditions ||
+        checkpoint?.successConditions
+      ).filter(Boolean),
+      nextTest: cleanText(source.nextTest || legacy.nextCondition),
+      status: ["active", "answered", "archived"].includes(source.status)
+        ? source.status
+        : "active",
+      previousText: cleanText(source.previousText || legacy.previousTitle),
+      history: asArray(source.history || legacy.history),
+      updatedAt: source.updatedAt || legacy.updatedAt || "",
+      updatedBy: cleanText(source.updatedBy || legacy.updatedBy)
+    };
+  }
+
+  function normalizeEvidenceRecord(record, index, context) {
+    const source = record && typeof record === "object" ? clone(record) : {};
+    const title = cleanText(source.title, `Evidence ${index + 1}`);
+    return {
+      id: source.id || uid("evidence", `${context?.checkpointId || "cp"}-${index + 1}-${title}`),
+      staffId: source.staffId || context?.staffId || "",
+      checkpointId: source.checkpointId || context?.checkpointId || "",
+      modelId: source.modelId || "",
+      practiceId: source.practiceId || source.sourcePracticeId || "",
+      sourceType: source.sourceType || (source.practiceId || source.sourcePracticeId ? "practice" : "legacy"),
+      title,
+      fact: cleanText(source.fact || source.result || source.note),
+      judgment: cleanText(source.judgment || source.win || source.decision),
+      whySo: asArray(source.whySo).map(cleanText).filter(Boolean),
+      soWhat: cleanText(source.soWhat || source.next),
+      nextTest: cleanText(source.nextTest || source.next),
+      journeyImpact: Object.assign({
+        status: "pending",
+        checkpointStatus: "",
+        confidenceDelta: 0,
+        note: ""
+      }, source.journeyImpact || {}),
+      libraryAssetIds: asArray(source.libraryAssetIds),
+      createdBy: cleanText(source.createdBy || source.by || context?.actorName),
+      createdById: source.createdById || source.actorId || "",
+      createdAt: source.createdAt || source.at || isoNow(),
+      updatedAt: source.updatedAt || source.createdAt || source.at || isoNow()
+    };
+  }
+
+  function normalizeJourneyUpdate(update, index) {
+    const source = update && typeof update === "object" ? clone(update) : {};
+    return {
+      id: source.id || uid("journey-update", `${source.evidenceId || index}-${source.createdAt || index}`),
+      evidenceId: source.evidenceId || "",
+      checkpointId: source.checkpointId || "",
+      status: ["pending", "applied", "rejected"].includes(source.status)
+        ? source.status
+        : "pending",
+      impact: source.impact || "review",
+      proposedQuestion: cleanText(source.proposedQuestion),
+      note: cleanText(source.note),
+      createdAt: source.createdAt || isoNow(),
+      createdBy: cleanText(source.createdBy),
+      resolvedAt: source.resolvedAt || "",
+      resolvedBy: cleanText(source.resolvedBy)
+    };
+  }
+
+  function normalizeModelBooking(model, index) {
+    const source = model && typeof model === "object" ? clone(model) : {};
+    return Object.assign({
+      id: uid("model", `${source.date || "date"}-${index + 1}`),
+      name: "",
+      date: "",
+      time: "",
+      duration: 120,
+      menu: "カット",
+      checkpointId: "",
+      checkpointCode: "",
+      validationQuestion: "",
+      note: "",
+      updatedAt: ""
+    }, source, {
+      validationQuestion: cleanText(source.validationQuestion || source.theme || source.memo || source.note),
+      note: cleanText(source.note || source.validationQuestion || source.theme || source.memo)
+    });
+  }
+
+  function deriveJourneyMetrics(workspace) {
+    const checkpoints = asArray(workspace?.journey?.checkpoints);
+    const required = checkpoints
+      .filter(item => item.type !== "Optional")
+      .reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
+    const actual = checkpoints.reduce((sum, item) => sum + (Number(item.actual) || 0), 0);
+    const progress = required ? Math.min(100, Math.round(actual / required * 100)) : 0;
+    const start = new Date(`${workspace?.journey?.generatedFrom?.generatedAt || ""}`);
+    const deadline = new Date(`${workspace?.deadline || ""}T23:59:59`);
+    const now = new Date();
+    const duration = deadline.getTime() - start.getTime();
+    const planned = duration > 0 && !Number.isNaN(duration)
+      ? Math.max(0, Math.min(100, Math.round((now.getTime() - start.getTime()) / duration * 100)))
+      : progress;
+    return { required, actual, progress, planned };
   }
 
   function normalizeVisionProfile(profile, workspace) {
@@ -328,7 +459,7 @@
         issue: seed.issue,
         hours,
         actual: 0,
-        evidenceItems: [],
+        evidenceIds: [],
         history: [],
         supportHistory: [],
         confidence: 0,
@@ -369,7 +500,7 @@
     return checkpoints.length === 5 &&
       checkpoints.every((checkpoint, index) =>
         checkpoint.id === `cp${index + 1}` &&
-        asArray(checkpoint.evidenceItems).length === 0 &&
+        asArray(checkpoint.evidenceIds || checkpoint.evidenceItems).length === 0 &&
         Number(checkpoint.actual || 0) === 0
       );
   }
@@ -397,7 +528,7 @@
       evidence: "",
       issue: index === 0 ? "完成像へ近づくため、何を観察できる必要があるか？" : "",
       depends: index ? `CP${index}` : "",
-      evidenceItems: [],
+      evidenceIds: [],
       history: [],
       supportHistory: []
     };
@@ -408,6 +539,7 @@
     const result = Object.assign(base, clone(checkpoint || {}));
     result.id = result.id || `cp${index + 1}`;
     result.code = result.code || `CP${index + 1}`;
+    result.evidenceIds = asArray(result.evidenceIds);
     result.evidenceItems = asArray(result.evidenceItems);
     result.history = asArray(result.history);
     result.supportHistory = asArray(result.supportHistory);
@@ -443,46 +575,65 @@
     const workspaceSeed = {
       vision: blank ? "なりたい美容師像を設定してください" : (
         typeof source.vision === "object" ? source.vision.text : source.vision
-      ) || "なりたい美容師像を設定してください",
+      ) || source.visionProfile?.statement || "なりたい美容師像を設定してください",
       onboarding: clone(source.onboarding || {})
     };
     const visionProfile = normalizeVisionProfile(source.visionProfile, workspaceSeed);
+    const evidenceRecords = asArray(source.evidenceRecords)
+      .map((record, index) => normalizeEvidenceRecord(record, index, { staffId }));
+    const evidenceIds = new Set(evidenceRecords.map(record => record.id));
+    checkpoints.forEach(checkpoint => {
+      asArray(checkpoint.evidenceItems).forEach((item, index) => {
+        const record = normalizeEvidenceRecord(item, evidenceRecords.length, {
+          staffId,
+          checkpointId: checkpoint.id
+        });
+        if (!evidenceIds.has(record.id)) {
+          evidenceRecords.push(record);
+          evidenceIds.add(record.id);
+        }
+        checkpoint.evidenceIds.push(record.id);
+      });
+      checkpoint.evidenceIds = Array.from(new Set(checkpoint.evidenceIds)).filter(id =>
+        evidenceRecords.some(record => record.id === id)
+      );
+      delete checkpoint.evidenceItems;
+    });
+    const journeySeed = Object.assign({
+      version: Number(sourceJourney.version) || 1,
+      routeMode: sourceJourney.routeMode || "legacy",
+      generatedFrom: clone(sourceJourney.generatedFrom || {}),
+      domains: asArray(sourceJourney.domains),
+      currentCheckpointId: sourceJourney.currentCheckpointId || "",
+      routeChanges: asArray(sourceJourney.routeChanges),
+      routeReason: sourceJourney.routeReason || ""
+    }, sourceJourney, {
+      checkpoints,
+      history: blank ? [] : asArray(sourceJourney.history),
+      domains: asArray(sourceJourney.domains),
+      routeChanges: asArray(sourceJourney.routeChanges),
+      currentCheckpointId: sourceJourney.currentCheckpointId ||
+        checkpoints.find(item => item.status === "current")?.id ||
+        checkpoints[0]?.id ||
+        "",
+      requiredHours: checkpoints.reduce((sum, item) => sum + (Number(item.hours) || 0), 0),
+      actualHours: checkpoints.reduce((sum, item) => sum + (Number(item.actual) || 0), 0)
+    });
     const workspace = {
       staffId,
-      vision: visionProfile.statement,
       visionProfile,
       deadline,
       hours: Math.max(0, Number(source.hours ?? source.weeklyHours ?? 6) || 0),
       overtimeHours: Math.max(0, Number(source.overtimeHours || 0) || 0),
       focusArea: source.focusArea || source.currentFocus || "技術",
-      progress: blank ? 0 : Math.max(0, Math.min(100, Number(source.progress) || 0)),
-      planned: blank ? 0 : Math.max(0, Math.min(100, Number(source.planned) || 0)),
-      issue: Object.assign({
-        title: "次のCheckpointへ進むため、今もっとも答える必要がある問いを設定する",
-        age: 0,
-        successConditions: []
-      }, blank ? {} : clone(source.issue || {})),
-      journey: Object.assign({
-        version: Number(sourceJourney.version) || 1,
-        routeMode: sourceJourney.routeMode || "legacy",
-        generatedFrom: clone(sourceJourney.generatedFrom || {}),
-        domains: asArray(sourceJourney.domains),
-        currentCheckpointId: sourceJourney.currentCheckpointId || "",
-        routeChanges: asArray(sourceJourney.routeChanges),
-        routeReason: sourceJourney.routeReason || ""
-      }, sourceJourney, {
-        checkpoints,
-        history: blank ? [] : asArray(sourceJourney.history),
-        domains: asArray(sourceJourney.domains),
-        routeChanges: asArray(sourceJourney.routeChanges),
-        currentCheckpointId: sourceJourney.currentCheckpointId ||
-          checkpoints.find(item => item.status === "current")?.id ||
-          checkpoints[0]?.id ||
-          "",
-        requiredHours: checkpoints.reduce((sum, item) => sum + (Number(item.hours) || 0), 0),
-        actualHours: checkpoints.reduce((sum, item) => sum + (Number(item.actual) || 0), 0)
-      }),
-      modelBookings: blank ? [] : asArray(source.modelBookings || source.modelPlans || source.models),
+      currentQuestion: normalizeCurrentQuestion(
+        blank ? {} : source.currentQuestion,
+        source,
+        checkpoints
+      ),
+      journey: journeySeed,
+      modelBookings: blank ? [] : asArray(source.modelBookings || source.modelPlans || source.models)
+        .map(normalizeModelBooking),
       practiceSessions: blank ? [] : asArray(source.practiceSessions || source.records),
       supportSessions: blank ? [] : asArray(source.supportSessions),
       practiceDraft: blank ? null : (
@@ -494,6 +645,9 @@
         ? source.libraryUi
         : { query: "", filter: "all", view: "grid" },
       libraryRefs: blank ? [] : asArray(source.libraryRefs),
+      evidenceRecords: blank ? [] : evidenceRecords,
+      journeyUpdates: blank ? [] : asArray(source.journeyUpdates).map(normalizeJourneyUpdate),
+      supportRequests: blank ? [] : asArray(source.supportRequests),
       primarySupportId: source.primarySupportId || "",
       supportMemberIds: asArray(source.supportMemberIds),
       onboarding: Object.assign({
@@ -545,6 +699,9 @@
         updatedAt: isoNow()
       }, clone(source.meta || {}), { schemaVersion: SCHEMA_VERSION })
     };
+    const metrics = deriveJourneyMetrics(workspace);
+    workspace.journey.requiredHours = metrics.required;
+    workspace.journey.actualHours = metrics.actual;
     return workspace;
   }
 
@@ -553,6 +710,46 @@
     for (const key of WORKSPACE_KEYS) {
       if (key in (state || {})) next[key] = clone(state[key]);
     }
+    next.evidenceRecords = asArray(next.evidenceRecords);
+    asArray(next.journey?.checkpoints).forEach(checkpoint => {
+      checkpoint.evidenceIds = asArray(checkpoint.evidenceIds);
+      asArray(checkpoint.evidenceItems).forEach((item, index) => {
+        let record = item?.id
+          ? next.evidenceRecords.find(candidate => candidate.id === item.id)
+          : null;
+        if (!record) {
+          record = normalizeEvidenceRecord(item, next.evidenceRecords.length + index, {
+            staffId,
+            checkpointId: checkpoint.id
+          });
+          next.evidenceRecords.push(record);
+        }
+        checkpoint.evidenceIds.push(record.id);
+      });
+      checkpoint.evidenceIds = Array.from(new Set(checkpoint.evidenceIds));
+      delete checkpoint.evidenceItems;
+    });
+    next.visionProfile = normalizeVisionProfile(
+      Object.assign({}, next.visionProfile || {}, {
+        statement: cleanText(state?.visionProfile?.statement || state?.vision)
+      }),
+      state
+    );
+    next.currentQuestion = normalizeCurrentQuestion(
+      Object.assign({}, state?.currentQuestion || {}, {
+        text: cleanText(state?.issue?.title || state?.currentQuestion?.text),
+        successConditions: asArray(
+          state?.currentQuestion?.successConditions || state?.issue?.successConditions
+        ),
+        updatedAt: state?.issue?.updatedAt || state?.currentQuestion?.updatedAt || ""
+      }),
+      state,
+      asArray(state?.journey?.checkpoints)
+    );
+    delete next.vision;
+    delete next.issue;
+    delete next.progress;
+    delete next.planned;
     next.staffId = staffId;
     next.meta = Object.assign({}, next.meta || {}, {
       schemaVersion: SCHEMA_VERSION,
@@ -563,6 +760,18 @@
 
   function stateFromWorkspace(workspace, sharedLibrary, role, page) {
     const result = clone(workspace);
+    const metrics = deriveJourneyMetrics(result);
+    result.vision = result.visionProfile?.statement || "";
+    result.issue = Object.assign({}, result.currentQuestion || {}, {
+      title: result.currentQuestion?.text || ""
+    });
+    result.progress = metrics.progress;
+    result.planned = metrics.planned;
+    asArray(result.journey?.checkpoints).forEach(checkpoint => {
+      checkpoint.evidenceItems = asArray(checkpoint.evidenceIds)
+        .map(id => asArray(result.evidenceRecords).find(record => record.id === id))
+        .filter(Boolean);
+    });
     result.role = role || "staff";
     result.page = page || (result.role === "staff" ? "home" : result.role);
     result.library = clone(asArray(sharedLibrary));
@@ -618,6 +827,9 @@
       comparison,
       modelId: "",
       modelName: "",
+      checkpointId: "",
+      evidenceIds: [],
+      journeyConnection: { status: "pending", checkpointId: "", journeyItemId: "" },
       updatedBy: "System",
       updatedAt: "",
       updatedById: "",
@@ -627,6 +839,12 @@
       image: source.image || images[0]?.src || "",
       images,
       comparison,
+      evidenceIds: asArray(source.evidenceIds),
+      journeyConnection: Object.assign({
+        status: source.checkpointId ? "connected" : "pending",
+        checkpointId: source.checkpointId || "",
+        journeyItemId: ""
+      }, source.journeyConnection || {}),
       staffIds: asArray(source.staffIds),
       history: asArray(source.history)
     });
@@ -786,6 +1004,12 @@
     createWorkspace,
     workspaceFromState,
     stateFromWorkspace,
+    currentCheckpointOf,
+    normalizeCurrentQuestion,
+    normalizeEvidenceRecord,
+    normalizeJourneyUpdate,
+    normalizeModelBooking,
+    deriveJourneyMetrics,
     normalizeAsset,
     normalizeAssetImage,
     migrateLegacy,
