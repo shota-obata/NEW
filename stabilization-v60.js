@@ -782,7 +782,7 @@
   }
 
   function refreshVersion() {
-    const versionLabel = `v${window.GROWTH_VERSION || "7.9"}`;
+    const versionLabel = `v${window.GROWTH_VERSION || "8.0"}`;
     document.title = `Growth OS ${versionLabel}`;
     const badge = document.querySelector(".brand small");
     if (badge) badge.textContent = versionLabel;

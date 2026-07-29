@@ -77,6 +77,7 @@ body{background:var(--bg);letter-spacing:-.01em}.top{height:64px;background:rgba
 <link rel="stylesheet" href="evidence-v75.css?v=79">
 <link rel="stylesheet" href="growth-design-v76.css?v=79">
 <link rel="stylesheet" href="account-auth-v77.css?v=79">
+<link rel="stylesheet" href="cloud-account-management-v80.css?v=80">
 <link rel="stylesheet" href="capability-map-v78.css?v=79">
 <script>window.__growthHadStoredState=Boolean(localStorage.getItem('growthOS.unified.v5'));</script>
 </head><body><header class="top"><div class="brand"><div class="mark">G</div>Growth OS <small style="color:var(--muted)">v5.5</small></div><div class="roles"><button class="role active" data-role="staff">Staff</button><button class="role" data-role="support">Support</button><button class="role" data-role="management">Management</button></div><span class="save">● 自動保存</span></header><div class="shell"><aside id="side" class="side"></aside><main><section id="home" class="page active"></section><section id="journey" class="page"></section><section id="issue" class="page"></section><section id="practice" class="page"></section><section id="library" class="page"></section><section id="planner" class="page"></section><section id="support" class="page"></section><section id="management" class="page"></section><section id="settings" class="page"></section></main></div><nav class="bottom"><button data-page="home">Home</button><button data-page="journey">Journey</button><button data-page="practice">＋</button><button data-page="library">Library</button></nav><div id="assetModal" class="modal hidden"><div class="modalbox"><button class="close" data-action="close-modal">×</button><div class="eyebrow" id="assetMode">LIBRARY ASSET</div><h2 id="assetHeading">Libraryを編集</h2><div class="form2"><div class="field"><label>タイトル</label><input id="aTitle"></div><div class="field"><label>タグ</label><input id="aTag" placeholder="例：顔まわり / 骨格補正"></div><div class="field"><label>Case｜何が起きた？</label><textarea id="aCase"></textarea></div><div class="field"><label>Decision｜どう判断した？</label><textarea id="aDecision"></textarea></div><div class="field"><label>Support Correction｜どう修正した？</label><textarea id="aCorrection"></textarea></div><div class="field"><label>Transfer Rule｜次回も使える原則</label><textarea id="aRule"></textarea></div><div class="field"><label>Next Test｜次に確かめること</label><textarea id="aNext"></textarea></div><div class="field"><label>画像</label><input id="aImage" type="file" accept="image/*"><small class="lead">画像は自動圧縮してブラウザ内に保存します。</small></div></div><img id="aPreview" class="preview hidden"><div style="display:flex;justify-content:space-between;gap:10px;margin-top:18px"><button id="deleteAsset" class="btn danger hidden" data-action="delete-asset">削除</button><div style="margin-left:auto;display:flex;gap:8px"><button id="removeImage" class="btn secondary hidden" data-action="remove-image">画像を外す</button><button class="btn primary" data-action="save-asset">保存</button></div></div></div></div>
@@ -112,7 +113,10 @@ document.addEventListener('click',e=>{const page=e.target.closest('[data-page="p
 <script src="management-v74.js?v=79"></script>
 <script src="evidence-v75.js?v=79"></script>
 <script src="growth-design-v76.js?v=79"></script>
-<script src="account-auth-v77.js?v=79"></script>
+<script src="growth-cloud-config.js?v=80"></script>
+<script src="cloud-auth-v80.js?v=80"></script>
+<script src="account-auth-v77.js?v=80"></script>
+<script src="cloud-account-management-v80.js?v=80"></script>
 <script src="support-request-v79.js?v=79"></script>
 <script src="capability-map-v78.js?v=79"></script>
 </body></html>

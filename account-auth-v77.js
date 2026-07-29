@@ -50,6 +50,10 @@
     return String(value || "").trim().toLowerCase();
   }
 
+  function cloudMode() {
+    return Boolean(window.GrowthCloud?.isConfigured);
+  }
+
   function readTheme() {
     const theme = localStorage.getItem(THEME_KEY);
     return theme === "dark" ? "dark" : "light";
@@ -288,7 +292,7 @@
   }
 
   function renderGateMode(mode) {
-    const canSetup = availableMembers().length > 0;
+    const canSetup = !cloudMode() && availableMembers().length > 0;
     gateMode = mode === "setup" && canSetup ? "setup" : "login";
     const setup = gateMode === "setup";
     const loginFields = document.getElementById("auth77LoginFields");
@@ -299,7 +303,9 @@
     document.getElementById("auth77Title").textContent = setup ? "初回アカウント設定" : "ログイン";
     document.getElementById("auth77Description").textContent = setup
       ? "Growth OSの人物データへ、この端末の個人IDと4桁PINを結びます。"
-      : "個人IDと4桁のPINを入力してください。";
+      : cloudMode()
+        ? "個人IDと4桁PINで、共有Growth OSへログインします。"
+        : "個人IDと4桁のPINを入力してください。";
     document.getElementById("auth77Submit").textContent = setup ? "アカウントを設定" : "ログイン";
     const modeButton = document.getElementById("auth77Mode");
     modeButton.hidden = !canSetup && !setup;
@@ -356,6 +362,13 @@
     const pin = document.getElementById("auth77LoginPin").value;
     if (!loginId || !/^\d{4}$/.test(pin)) {
       throw new Error("個人IDと4桁のPINを確認してください。");
+    }
+    if (cloudMode()) {
+      const result = await window.GrowthCloud.login(loginId, pin);
+      if (!result?.account) throw new Error("クラウド認証の結果を確認できませんでした。");
+      clearSession();
+      await activate(result.account);
+      return;
     }
     const account = accounts().find(item => normalizeLoginId(item.loginId) === loginId);
     if (!account || !memberFor(account)) {
@@ -516,6 +529,12 @@
       throw new Error("PINは4桁の数字で入力してください。");
     }
     if (changedPin !== confirmation) throw new Error("新しいPINが一致していません。");
+    if (cloudMode()) {
+      await window.GrowthCloud.changePin(currentPin, changedPin);
+      closePinDialog();
+      toggleAccountMenu(false);
+      return;
+    }
     const list = accounts();
     const account = list.find(item => item.id === currentAccount.id);
     if (!account) throw new Error("ログイン情報が見つかりません。");
@@ -532,7 +551,11 @@
     toggleAccountMenu(false);
   }
 
-  function logout() {
+  async function logout() {
+    if (cloudMode()) {
+      await window.GrowthCloud.flush().catch(() => {});
+      await window.GrowthCloud.logout();
+    }
     clearSession();
     currentAccount = null;
     document.getElementById("auth77Account")?.remove();
@@ -575,7 +598,9 @@
       return;
     }
     const action = event.target.closest("[data-auth77-action]")?.dataset.auth77Action;
-    if (action === "logout") logout();
+    if (action === "logout") logout().catch(error => {
+      setGateMessage(error?.message || "ログアウトできませんでした。");
+    });
     if (action === "change-pin") {
       toggleAccountMenu(false);
       openPinDialog();
@@ -622,20 +647,42 @@
   const observer = new MutationObserver(queueChromeRefresh);
   observer.observe(document.body, { childList: true, subtree: true });
 
-  applyTheme(readTheme(), false);
-  ensureGate();
-  const restoredAccount = accountFromSession();
-  if (restoredAccount) {
-    activate(restoredAccount).catch(() => {
-      clearSession();
-      currentAccount = null;
-      setAppLocked(true);
-      renderGateMode("login");
-    }).finally(() => {
-      html.dataset.authState = "ready";
-    });
-  } else {
+  async function initializeAuth() {
+    applyTheme(readTheme(), false);
+    ensureGate();
     setAppLocked(true);
-    html.dataset.authState = "ready";
+    if (cloudMode()) {
+      try {
+        await window.GrowthCloud.ready;
+        const restored = await window.GrowthCloud.restore();
+        if (restored?.account) {
+          await activate(restored.account);
+        } else {
+          renderGateMode("login");
+        }
+      } catch (error) {
+        currentAccount = null;
+        renderGateMode("login");
+        setGateMessage(error?.message || "クラウドへ接続できませんでした。");
+      } finally {
+        html.dataset.authState = "ready";
+      }
+      return;
+    }
+    const restoredAccount = accountFromSession();
+    if (restoredAccount) {
+      activate(restoredAccount).catch(() => {
+        clearSession();
+        currentAccount = null;
+        setAppLocked(true);
+        renderGateMode("login");
+      }).finally(() => {
+        html.dataset.authState = "ready";
+      });
+    } else {
+      html.dataset.authState = "ready";
+    }
   }
+
+  initializeAuth();
 })();
