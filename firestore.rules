@@ -1,16 +1,169 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /growth_accounts/{document=**} {
-      allow read, write: if false;
+    function accountPath() {
+      return /databases/$(database)/documents/growth_accounts/$(request.auth.uid);
     }
 
-    match /growth_auth_attempts/{document=**} {
-      allow read, write: if false;
+    function signedIn() {
+      return request.auth != null;
     }
 
-    match /growth_organizations/{document=**} {
-      allow read, write: if false;
+    function hasAccount() {
+      return signedIn() && exists(accountPath());
+    }
+
+    function account() {
+      return get(accountPath()).data;
+    }
+
+    function activeAccount() {
+      return hasAccount()
+        && account().active == true
+        && (!('memberActive' in account()) || account().memberActive == true);
+    }
+
+    function sameOrganization(organizationId) {
+      return activeAccount()
+        && account().organizationId == organizationId;
+    }
+
+    function isManagement(organizationId) {
+      return sameOrganization(organizationId)
+        && account().role == "management";
+    }
+
+    function isOwnStaff(organizationId, staffId) {
+      return sameOrganization(organizationId)
+        && account().role == "staff"
+        && account().memberId == staffId;
+    }
+
+    function isAssignedSupport(organizationId, staffId) {
+      return sameOrganization(organizationId)
+        && account().role == "support"
+        && staffId in account().staffIds;
+    }
+
+    function canAccessStaff(organizationId, staffId) {
+      return isManagement(organizationId)
+        || isOwnStaff(organizationId, staffId)
+        || isAssignedSupport(organizationId, staffId);
+    }
+
+    function staffWritableSegment(segmentId) {
+      return segmentId in [
+        "profile",
+        "journey",
+        "planner",
+        "practice",
+        "evidence",
+        "supportRequests"
+      ];
+    }
+
+    function supportWritableSegment(segmentId) {
+      return segmentId in [
+        "journey",
+        "evidence",
+        "supportRequests",
+        "supportSessions"
+      ];
+    }
+
+    function validSegment(organizationId, staffId, segmentId) {
+      return request.resource.data.organizationId == organizationId
+        && request.resource.data.staffId == staffId
+        && request.resource.data.segmentId == segmentId;
+    }
+
+    function canWriteLibraryItem(organizationId) {
+      return isManagement(organizationId)
+        || (
+          sameOrganization(organizationId)
+          && request.resource.data.organizationId == organizationId
+          && request.resource.data.staffIds is list
+          && (
+            (
+              account().role == "staff"
+              && account().memberId in request.resource.data.staffIds
+            )
+            || (
+              account().role == "support"
+              && request.resource.data.staffIds.hasAny(account().staffIds)
+            )
+          )
+        );
+    }
+
+    match /growth_accounts/{uid} {
+      allow get: if activeAccount()
+        && (
+          request.auth.uid == uid
+          || (
+            account().role == "management"
+            && resource.data.organizationId == account().organizationId
+          )
+        );
+
+      allow list: if activeAccount()
+        && account().role == "management";
+
+      allow create: if activeAccount()
+        && account().role == "management"
+        && request.resource.data.organizationId == account().organizationId
+        && request.resource.data.role in ["staff", "support", "management"]
+        && request.resource.data.active == true;
+
+      allow update: if activeAccount()
+        && (
+          (
+            account().role == "management"
+            && resource.data.organizationId == account().organizationId
+            && request.resource.data.organizationId == account().organizationId
+          )
+          || (
+            request.auth.uid == uid
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(["updatedAt"])
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    match /growth_organizations/{organizationId} {
+      allow read: if sameOrganization(organizationId);
+      allow create, update: if isManagement(organizationId);
+      allow delete: if false;
+
+      match /staff/{staffId}/segments/{segmentId} {
+        allow read: if canAccessStaff(organizationId, staffId);
+
+        allow create, update: if validSegment(
+          organizationId,
+          staffId,
+          segmentId
+        ) && (
+          isManagement(organizationId)
+          || (
+            isOwnStaff(organizationId, staffId)
+            && staffWritableSegment(segmentId)
+          )
+          || (
+            isAssignedSupport(organizationId, staffId)
+            && supportWritableSegment(segmentId)
+          )
+        );
+
+        allow delete: if isManagement(organizationId);
+      }
+
+      match /library/{assetId} {
+        allow read: if sameOrganization(organizationId);
+        allow create, update: if canWriteLibraryItem(organizationId);
+        allow delete: if isManagement(organizationId);
+      }
     }
   }
 }
