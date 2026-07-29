@@ -1,9 +1,11 @@
 (() => {
-  document.title = "Growth OS v7.6";
+  window.GROWTH_VERSION = "7.9";
+  const versionLabel = `v${window.GROWTH_VERSION}`;
+  document.title = `Growth OS ${versionLabel}`;
   const version = document.querySelector(".brand small");
   if (version) {
     const applyVersion = () => {
-      if (version.textContent !== "v7.6") version.textContent = "v7.6";
+      if (version.textContent !== versionLabel) version.textContent = versionLabel;
     };
     applyVersion();
     new MutationObserver(applyVersion).observe(version, {
@@ -12,5 +14,5 @@
       subtree: true,
     });
   }
-  document.documentElement.dataset.designSystem = "growth-v76";
+  document.documentElement.dataset.designSystem = "growth-v79";
 })();

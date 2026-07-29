@@ -292,9 +292,10 @@
   render = function renderV74Management() {
     previousRender();
     renderManagementV74();
-    document.title = "Growth OS v7.4";
+    const versionLabel = `v${window.GROWTH_VERSION || "7.9"}`;
+    document.title = `Growth OS ${versionLabel}`;
     const badge = document.querySelector(".brand small");
-    if (badge) badge.textContent = "v7.4";
+    if (badge) badge.textContent = versionLabel;
   };
 
   document.addEventListener("click", event => {

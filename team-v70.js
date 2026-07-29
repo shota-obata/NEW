@@ -1486,9 +1486,10 @@
   }
 
   function refreshVersion() {
-    document.title = "Growth OS v7.5";
+    const versionLabel = `v${window.GROWTH_VERSION || "7.9"}`;
+    document.title = `Growth OS ${versionLabel}`;
     const badge = document.querySelector(".brand small");
-    if (badge) badge.textContent = "v7.5";
+    if (badge) badge.textContent = versionLabel;
   }
 
   function renderV70() {
@@ -1638,12 +1639,46 @@
     }, 0);
   });
 
+  function activateAccount(role, memberId) {
+    if (!["staff", "support", "management"].includes(role)) return null;
+    const member = memberList(role).find(item => (
+      item.id === memberId && item.status === "active"
+    ));
+    if (!member) return null;
+
+    syncCurrentWorkspace();
+    if (role === "staff") organization().activeStaffId = member.id;
+    if (role === "support") organization().activeSupportId = member.id;
+    if (role === "management") organization().activeManagementId = member.id;
+
+    const scoped = role === "staff"
+      ? [member]
+      : scopedStaffMembers(role);
+    const currentStaffId = organization().activeStaffId;
+    const targetStaffId = scoped.some(item => item.id === currentStaffId)
+      ? currentStaffId
+      : scoped[0]?.id;
+    if (!targetStaffId) return null;
+
+    organization().ui.role = role;
+    const page = activePage(role);
+    applyActiveWorkspace(targetStaffId, {
+      role,
+      page,
+      skipSync: true
+    });
+    persistPayload();
+    render();
+    return clone(actorContext());
+  }
+
   window.GrowthTeam = {
     actorName,
     actorContext,
     getPayload: () => clone(payload),
     activeStaff: () => clone(activeStaff()),
     activeWorkspace: () => clone(activeWorkspace()),
+    activateAccount,
     commitState,
     switchStaff,
     onboardingReadiness: staffId => {

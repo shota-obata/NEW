@@ -1163,3 +1163,100 @@ select:focus,
     text-align: center !important;
   }
 }
+
+/* Typography contract v7.8
+ * Latin glyphs use SF Pro Text; Japanese glyphs fall through to Hiragino Sans.
+ */
+:root {
+  --font-ui: "SF Pro Text", "Hiragino Sans", -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", sans-serif;
+  --font-page-title: 18px;
+  --font-content-title: 15px;
+  --font-body: 14px;
+  --font-small: 11px;
+  --font-micro: 10px;
+}
+
+body,
+button,
+input,
+textarea,
+select {
+  font-family: var(--font-ui) !important;
+  font-size: var(--font-body);
+  font-weight: 400;
+}
+
+body,
+p,
+li,
+label,
+input,
+textarea,
+select {
+  line-height: 18px;
+}
+
+.head h1,
+.v7-pagehead h1,
+.v72-pagehead h1,
+.v73-pagehead h1,
+.v74-management-head h1,
+.planner-toolbar h1,
+.practice57-head h1,
+.cap78-pagehead h1 {
+  font-size: var(--font-page-title) !important;
+  font-weight: 600 !important;
+  line-height: 1.3 !important;
+  letter-spacing: -.02em !important;
+}
+
+h2,
+h3,
+.card h2,
+.card h3,
+.nav,
+.btn,
+button {
+  font-weight: 600;
+}
+
+h2,
+h3,
+.card h2,
+.card h3 {
+  font-size: var(--font-content-title);
+  line-height: 1.3;
+}
+
+small,
+.eyebrow,
+.title,
+[class*="pagehead"] .eyebrow {
+  font-size: var(--font-micro) !important;
+}
+
+input[type="search"],
+.search-box,
+[class*="search"] input {
+  border-radius: 2px !important;
+}
+
+@media (max-width: 920px) {
+  .page {
+    padding-right: 10px !important;
+    padding-left: 10px !important;
+  }
+
+  .bottom {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .bottom button {
+    display: grid;
+    flex: 1 1 25%;
+    height: 100%;
+    place-items: center;
+  }
+}
