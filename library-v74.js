@@ -557,9 +557,10 @@
   render = function renderV74Library() {
     previousRender();
     renderLibraryV74();
-    document.title = "Growth OS v7.5";
+    const versionLabel = `v${window.GROWTH_VERSION || "7.9"}`;
+    document.title = `Growth OS ${versionLabel}`;
     const badge = document.querySelector(".brand small");
-    if (badge) badge.textContent = "v7.5";
+    if (badge) badge.textContent = versionLabel;
   };
 
   document.addEventListener("input", event => {

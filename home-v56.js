@@ -57,7 +57,7 @@
           <div class="home56-actions">
             ${cp?`<button class="btn primary" data-action="open-checkpoint" data-id="${safe(cp.id)}">Checkpointを開く</button>`:'<button class="btn primary" data-page="journey">Journeyを設定</button>'}
             <button class="btn secondary" data-page="practice">Practiceへ</button>
-            <button class="btn secondary" data-page="support">Supportへ</button>
+            <button class="btn secondary" data-page="support" data-support-request="home">Supportへ</button>
           </div>
         </div>
         <div class="home56-ringbox">
@@ -81,7 +81,7 @@
 
         <article class="home56-card home56-issue">
           <span class="home56-label">今回の問い</span><h3>${safe(issue)}</h3><p>不足を責めるのではなく、次の検証で解像度を上げるための問い。</p>
-          <button class="btn secondary home56-wide" data-page="support">Supportで深掘り</button>
+          <button class="btn secondary home56-wide" data-page="support" data-support-request="home">Supportで深掘り</button>
         </article>
       </section>
 

@@ -15,6 +15,7 @@
   let editingMember = null;
   let pendingBeforeAction = null;
   let onboardingContext = null;
+  let suppressCloudSync = false;
 
   const safe = value => typeof esc === "function"
     ? esc(String(value ?? ""))
@@ -253,6 +254,9 @@
   function persistPayload() {
     syncAssignments();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    if (!suppressCloudSync && window.GrowthCloud?.isConfigured) {
+      window.GrowthCloud.scheduleSave(clone(payload));
+    }
   }
 
   function commitState() {
@@ -294,7 +298,20 @@
 
   function updateSavedIndicator() {
     const indicator = document.querySelector(".save");
-    if (indicator) indicator.textContent = "● 組織データ保存済み";
+    if (!indicator) return;
+    const cloudStatus = document.documentElement.dataset.cloudStatus;
+    if (!window.GrowthCloud?.isConfigured) {
+      indicator.textContent = "● 端末内保存済み";
+      return;
+    }
+    const labels = {
+      connecting: "○ クラウド接続中",
+      saving: "○ クラウド保存中",
+      synced: "● クラウド同期済み",
+      error: "● 同期エラー",
+      ready: "○ クラウド待機中"
+    };
+    indicator.textContent = labels[cloudStatus] || "○ クラウド確認中";
   }
 
   function currentCheckpoint(workspace = state) {
@@ -1486,9 +1503,10 @@
   }
 
   function refreshVersion() {
-    document.title = "Growth OS v7.5";
+    const versionLabel = `v${window.GROWTH_VERSION || "7.9"}`;
+    document.title = `Growth OS ${versionLabel}`;
     const badge = document.querySelector(".brand small");
-    if (badge) badge.textContent = "v7.5";
+    if (badge) badge.textContent = versionLabel;
   }
 
   function renderV70() {
@@ -1638,13 +1656,97 @@
     }, 0);
   });
 
+  function activateAccount(role, memberId) {
+    if (!["staff", "support", "management"].includes(role)) return null;
+    const member = memberList(role).find(item => (
+      item.id === memberId && item.status === "active"
+    ));
+    if (!member) return null;
+
+    syncCurrentWorkspace();
+    if (role === "staff") organization().activeStaffId = member.id;
+    if (role === "support") organization().activeSupportId = member.id;
+    if (role === "management") organization().activeManagementId = member.id;
+
+    const scoped = role === "staff"
+      ? [member]
+      : scopedStaffMembers(role);
+    const currentStaffId = organization().activeStaffId;
+    const targetStaffId = scoped.some(item => item.id === currentStaffId)
+      ? currentStaffId
+      : scoped[0]?.id;
+    if (!targetStaffId) return null;
+
+    organization().ui.role = role;
+    const page = activePage(role);
+    applyActiveWorkspace(targetStaffId, {
+      role,
+      page,
+      skipSync: true
+    });
+    persistPayload();
+    render();
+    return clone(actorContext());
+  }
+
+  function replacePayload(nextPayload, options = {}) {
+    if (!nextPayload?.organization) return false;
+    suppressCloudSync = true;
+    try {
+      payload = Core.normalizeOrganizationPayload(nextPayload, state);
+      for (const [staffId, workspace] of Object.entries(payload.staffWorkspaces || {})) {
+        normalizeWorkspaceRecords(workspace);
+        updateOnboardingStatus(
+          workspace,
+          organization().staffMembers.find(member => member.id === staffId)
+        );
+      }
+      const cloudAccount = window.GrowthCloud?.account?.();
+      const role = cloudAccount?.role || organization().ui?.role || state.role || "staff";
+      if (cloudAccount?.memberId) {
+        if (role === "staff") organization().activeStaffId = cloudAccount.memberId;
+        if (role === "support") organization().activeSupportId = cloudAccount.memberId;
+        if (role === "management") organization().activeManagementId = cloudAccount.memberId;
+      }
+      const scoped = role === "staff"
+        ? memberList("staff").filter(member => member.id === cloudAccount?.memberId)
+        : scopedStaffMembers(role);
+      const currentStaffId = organization().activeStaffId;
+      const targetStaffId = scoped.some(member => member.id === currentStaffId)
+        ? currentStaffId
+        : scoped[0]?.id || Object.keys(payload.staffWorkspaces || {})[0];
+      if (!targetStaffId) return false;
+      organization().activeStaffId = targetStaffId;
+      const page = activePage(role);
+      applyActiveWorkspace(targetStaffId, {
+        role,
+        page,
+        skipSync: true
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      updateSavedIndicator();
+      render();
+      window.dispatchEvent(new CustomEvent("growth:payload-replaced", {
+        detail: {
+          source: options.source || "external",
+          revision: Number(options.revision) || 0
+        }
+      }));
+      return true;
+    } finally {
+      suppressCloudSync = false;
+    }
+  }
+
   window.GrowthTeam = {
     actorName,
     actorContext,
     getPayload: () => clone(payload),
     activeStaff: () => clone(activeStaff()),
     activeWorkspace: () => clone(activeWorkspace()),
+    activateAccount,
     commitState,
+    replacePayload,
     switchStaff,
     onboardingReadiness: staffId => {
       const member = organization().staffMembers.find(item => item.id === staffId);
@@ -1652,6 +1754,8 @@
     },
     exportPayload: () => Core.exportPayload(payload)
   };
+
+  window.addEventListener("growth:cloud-status", updateSavedIndicator);
 
   payload = readPayload();
   for (const [staffId, workspace] of Object.entries(payload.staffWorkspaces)) {

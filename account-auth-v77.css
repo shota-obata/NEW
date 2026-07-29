@@ -1,0 +1,1272 @@
+/*
+ * Growth OS Account & Theme v7.7
+ * Device-local identity gate for the current static build.
+ * The visual and data boundaries are ready to be replaced by server auth.
+ */
+
+html[data-auth-state="checking"] body {
+  visibility: hidden;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1115;
+  --card: #181b20;
+  --surface: #181b20;
+  --surface-soft: #20242a;
+  --surface-blue: #17293a;
+  --surface-yellow: #302916;
+  --surface-green: #172a22;
+  --surface-purple: #251f34;
+  --surface-peach: #31221d;
+  --text: #f2f4f6;
+  --muted: #a5adb6;
+  --subtle: #77808a;
+  --line: #2b3138;
+  --line-strong: #3a424b;
+  --blue: #45a5f8;
+  --blue-hover: #68b6fa;
+  --blue2: #17293a;
+  --green: #54c995;
+  --green2: #172a22;
+  --orange: #e4ad45;
+  --orange2: #302916;
+  --red: #ef7d84;
+  --red2: #382024;
+  --purple: #b29aee;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .24);
+  --shadow-raised: 0 18px 48px rgba(0, 0, 0, .34);
+}
+
+html[data-theme="dark"],
+html[data-theme="dark"] body {
+  background: var(--bg) !important;
+  color: var(--text);
+}
+
+html[data-theme="dark"] * {
+  scrollbar-color: #444c55 transparent;
+}
+
+html[data-theme="dark"] .top {
+  border-color: var(--line) !important;
+  background: rgba(20, 23, 28, .94) !important;
+}
+
+html[data-theme="dark"] .mark {
+  background: #f3f5f6 !important;
+  color: #111419 !important;
+}
+
+html[data-theme="dark"] .roles {
+  border-color: var(--line) !important;
+  background: #20242a !important;
+}
+
+html[data-theme="dark"] .role.active {
+  background: #30363e !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .side {
+  border-color: var(--line) !important;
+  background: #13161a !important;
+}
+
+html[data-theme="dark"] .side .nav,
+html[data-theme="dark"] .nav {
+  color: #aab1b9 !important;
+}
+
+html[data-theme="dark"] .side .nav:hover,
+html[data-theme="dark"] .nav:hover {
+  background: #20242a !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .side .nav.active,
+html[data-theme="dark"] .nav.active {
+  border-color: #343b43 !important;
+  background: #24292f !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .home56-card,
+html[data-theme="dark"] .home56-ringbox,
+html[data-theme="dark"] .home56-nextmodel,
+html[data-theme="dark"] .home56-model,
+html[data-theme="dark"] .home56-vision,
+html[data-theme="dark"] .v72-domain-card,
+html[data-theme="dark"] .v72-current-copy,
+html[data-theme="dark"] .v72-current-evidence,
+html[data-theme="dark"] .v72-map-section,
+html[data-theme="dark"] .v73-workspace,
+html[data-theme="dark"] .v73-sidecard,
+html[data-theme="dark"] .v73-history-item,
+html[data-theme="dark"] .v74-management-person,
+html[data-theme="dark"] .v74-management-panel,
+html[data-theme="dark"] .v74-alert-stack > article,
+html[data-theme="dark"] .v7-panel,
+html[data-theme="dark"] .practice57-main,
+html[data-theme="dark"] .practice57-side,
+html[data-theme="dark"] .library59-card,
+html[data-theme="dark"] .v74-editor-section,
+html[data-theme="dark"] .evidence75-card,
+html[data-theme="dark"] .evidence75-panel,
+html[data-theme="dark"] .calendar-shell,
+html[data-theme="dark"] .week-head,
+html[data-theme="dark"] .hero,
+html[data-theme="dark"] .journeyvision,
+html[data-theme="dark"] .os-vision,
+html[data-theme="dark"] .modalbox,
+html[data-theme="dark"] .v72-modalbox {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  box-shadow: var(--shadow) !important;
+}
+
+html[data-theme="dark"] .btn.secondary,
+html[data-theme="dark"] .secondary,
+html[data-theme="dark"] .btn.danger,
+html[data-theme="dark"] .danger,
+html[data-theme="dark"] input,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] select,
+html[data-theme="dark"] .field input,
+html[data-theme="dark"] .field textarea,
+html[data-theme="dark"] .field select {
+  border-color: var(--line-strong) !important;
+  background: #1c2025 !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: #727b85;
+}
+
+html[data-theme="dark"] .home56-focus,
+html[data-theme="dark"] .home56-current,
+html[data-theme="dark"] .v72-vision-hero,
+html[data-theme="dark"] .v72-current-question,
+html[data-theme="dark"] .v73-path-issue,
+html[data-theme="dark"] .v73-next,
+html[data-theme="dark"] .practice57-summary,
+html[data-theme="dark"] .count,
+html[data-theme="dark"] .timebox,
+html[data-theme="dark"] .os-score,
+html[data-theme="dark"] .v71-ready-banner,
+html[data-theme="dark"] .v71-ready-banner.startable {
+  border-color: #29445a !important;
+  background: var(--surface-blue) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .home56-issue,
+html[data-theme="dark"] .v7-issue-main,
+html[data-theme="dark"] .alert,
+html[data-theme="dark"] .v74-management-overview .v74-health-main.warning,
+html[data-theme="dark"] .v74-management-detail-hero.warning {
+  border-color: #59491f !important;
+  background: var(--surface-yellow) !important;
+  color: #f1d99c !important;
+}
+
+html[data-theme="dark"] .v72-journey-destination,
+html[data-theme="dark"] .v74-management-overview .v74-health-main.good,
+html[data-theme="dark"] .v74-management-detail-hero.good {
+  border-color: #285440 !important;
+  background: var(--surface-green) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .v73-principle,
+html[data-theme="dark"] .v74-editor-title > span,
+html[data-theme="dark"] .v74-modal-guide:not(.light) {
+  border-color: #4c3f69 !important;
+  background: var(--surface-purple) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .v74-management-overview .v74-health-main,
+html[data-theme="dark"] .v74-management-overview .v74-health-main.critical,
+html[data-theme="dark"] .v74-management-overview .v74-health-main.warning,
+html[data-theme="dark"] .v74-management-overview .v74-health-main.good,
+html[data-theme="dark"] .v74-management-detail-hero,
+html[data-theme="dark"] .v74-management-detail-hero.critical,
+html[data-theme="dark"] .v74-management-detail-hero.warning,
+html[data-theme="dark"] .v74-management-detail-hero.notice,
+html[data-theme="dark"] .v74-management-detail-hero.good,
+html[data-theme="dark"] .v7-management-hero,
+html[data-theme="dark"] .v7-management-hero.warning,
+html[data-theme="dark"] .v7-management-hero.critical {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .v74-management-overview .v74-health-main.critical,
+html[data-theme="dark"] .v74-management-detail-hero.critical {
+  border-color: #6b3439 !important;
+  background: var(--red2) !important;
+}
+
+html[data-theme="dark"] .v74-management-detail-hero.notice {
+  border-color: #29445a !important;
+  background: var(--surface-blue) !important;
+}
+
+html[data-theme="dark"] .home56-focus .eyebrow,
+html[data-theme="dark"] .home56-focus p,
+html[data-theme="dark"] .practice57-summary p,
+html[data-theme="dark"] .practice57-summary small,
+html[data-theme="dark"] .practice57-summary span,
+html[data-theme="dark"] .v72-vision-copy p,
+html[data-theme="dark"] .v72-journey-destination p,
+html[data-theme="dark"] .v73-principle p,
+html[data-theme="dark"] .v7-issue-main p,
+html[data-theme="dark"] .v7-issue-main small,
+html[data-theme="dark"] .v7-issue-main span {
+  color: var(--muted) !important;
+}
+
+html[data-theme="dark"] .home56-focus .secondary,
+html[data-theme="dark"] .v7-issue-main .secondary {
+  border-color: var(--line-strong) !important;
+  background: rgba(31, 36, 42, .88) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .home56-ring,
+html[data-theme="dark"] .v7-management-ring {
+  background: conic-gradient(var(--blue) calc(var(--p) * 1%), #2b333b 0) !important;
+}
+
+html[data-theme="dark"] .home56-ring::before,
+html[data-theme="dark"] .v7-management-ring::after {
+  background: var(--surface) !important;
+}
+
+html[data-theme="dark"] .v72-vision-time {
+  border-color: #29445a !important;
+  background: #14202b !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .v72-ring {
+  background:
+    radial-gradient(circle at center, #14202b 59%, transparent 60%),
+    conic-gradient(var(--blue) calc(var(--p) * 1%), #273847 0) !important;
+}
+
+html[data-theme="dark"] .v72-value-row i,
+html[data-theme="dark"] .v72-route-health,
+html[data-theme="dark"] .home56-metrics > div,
+html[data-theme="dark"] .v73-actions {
+  border-color: var(--line) !important;
+  background: rgba(31, 36, 42, .9) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .v72-deviation-grid > div,
+html[data-theme="dark"] .v72-detail-body,
+html[data-theme="dark"] .detail-metric,
+html[data-theme="dark"] .criteria,
+html[data-theme="dark"] .v73-gap,
+html[data-theme="dark"] .v71-zero,
+html[data-theme="dark"] .evidence-item,
+html[data-theme="dark"] .detail-drawer details {
+  border-color: var(--line) !important;
+  background: var(--surface-soft) !important;
+  color: var(--text) !important;
+}
+
+/* Legacy page surfaces that used fixed light colors. */
+html[data-theme="dark"] .practice57-context,
+html[data-theme="dark"] .practice57-sideblock,
+html[data-theme="dark"] .practice57-recentgrid article,
+html[data-theme="dark"] .e75-summary article,
+html[data-theme="dark"] .e75-card,
+html[data-theme="dark"] .v74-library-summary > div,
+html[data-theme="dark"] .v74-asset,
+html[data-theme="dark"] .v74-image-editor,
+html[data-theme="dark"] .v74-image-count,
+html[data-theme="dark"] .v74-modal-guide.light,
+html[data-theme="dark"] .v72-priority,
+html[data-theme="dark"] .v72-journey-metrics > div,
+html[data-theme="dark"] .v72-formgrid input,
+html[data-theme="dark"] .v72-formgrid textarea,
+html[data-theme="dark"] .v72-formgrid select,
+html[data-theme="dark"] .v72-modal-head,
+html[data-theme="dark"] .v72-modal-foot,
+html[data-theme="dark"] .v74-management-overview-card,
+html[data-theme="dark"] .v74-management-filter,
+html[data-theme="dark"] .v74-decision-path,
+html[data-theme="dark"] .v74-management-panel dl > div,
+html[data-theme="dark"] .v7-person-cell,
+html[data-theme="dark"] .v7-people-summary,
+html[data-theme="dark"] .v7-staff-card,
+html[data-theme="dark"] .v7-member-card,
+html[data-theme="dark"] .v7-management-metric,
+html[data-theme="dark"] .v7-management-row,
+html[data-theme="dark"] .v71-onboarding-shell,
+html[data-theme="dark"] .v71-onboarding-top,
+html[data-theme="dark"] .v71-onboarding-actions {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .practice57-sideblock:first-child,
+html[data-theme="dark"] .v74-management-filter.active {
+  border-color: #59491f !important;
+  background: var(--surface-yellow) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .v74-library-filters button,
+html[data-theme="dark"] .v74-no-images span,
+html[data-theme="dark"] .v74-form-grid input,
+html[data-theme="dark"] .v74-form-grid textarea,
+html[data-theme="dark"] .v74-form-grid select {
+  border-color: var(--line-strong) !important;
+  background: var(--surface-soft) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .v73-gap:hover,
+html[data-theme="dark"] .v73-gap.active {
+  border-color: #3a6b91 !important;
+  background: var(--surface-blue) !important;
+}
+
+html[data-theme="dark"] .v7-avatar,
+html[data-theme="dark"] .v7-avatar.target,
+html[data-theme="dark"] .v73-mini-avatar,
+html[data-theme="dark"] .v73-mini-avatar.support,
+html[data-theme="dark"] .v74-manager-avatar {
+  background: #28313a !important;
+  color: #d8e2eb !important;
+}
+
+html[data-theme="dark"] .bottom {
+  border-color: var(--line) !important;
+  background: rgba(19, 22, 26, .97) !important;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, .2) !important;
+}
+
+html[data-theme="dark"] .bottom button {
+  color: #b5bcc4;
+}
+
+/* Login gate */
+.auth77-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 30000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow: auto;
+  background:
+    radial-gradient(circle at 8% 12%, rgba(84, 169, 240, .14), transparent 30%),
+    radial-gradient(circle at 92% 88%, rgba(138, 117, 219, .1), transparent 28%),
+    var(--bg);
+}
+
+.auth77-gate[hidden] {
+  display: none;
+}
+
+.auth77-shell {
+  display: grid;
+  grid-template-columns: minmax(300px, .82fr) minmax(360px, 1.18fr);
+  width: min(980px, 100%);
+  min-height: 610px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 32px;
+  background: var(--surface);
+  box-shadow: 0 32px 90px rgba(32, 50, 68, .14);
+}
+
+.auth77-story {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 44px;
+  border-right: 1px solid #cfe4f7;
+  background: var(--surface-blue);
+}
+
+.auth77-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 760;
+}
+
+.auth77-logo i {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--text);
+  color: var(--surface);
+  font-style: normal;
+}
+
+.auth77-story h1 {
+  max-width: 390px;
+  margin: 40px 0 14px;
+  font-size: clamp(36px, 5vw, 58px);
+  line-height: 1.06;
+  letter-spacing: -.065em;
+}
+
+.auth77-story p {
+  max-width: 390px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.auth77-principle {
+  display: grid;
+  gap: 9px;
+  margin-top: 36px;
+}
+
+.auth77-principle span {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.auth77-principle span::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--blue);
+  content: "";
+}
+
+.auth77-formpanel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px clamp(30px, 6vw, 76px);
+}
+
+.auth77-formwrap {
+  width: min(420px, 100%);
+}
+
+.auth77-formwrap h2 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 30px;
+  letter-spacing: -.045em;
+}
+
+.auth77-formwrap > p {
+  margin: 0 0 28px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.auth77-field {
+  display: block;
+  margin-bottom: 17px;
+}
+
+.auth77-field > span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.auth77-field input,
+.auth77-field select {
+  width: 100%;
+  min-height: 50px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 13px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.auth77-pin {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .32em;
+}
+
+.auth77-submit {
+  width: 100%;
+  min-height: 50px;
+  margin-top: 5px;
+  border: 0;
+  border-radius: 13px;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.auth77-submit:hover {
+  opacity: .9;
+}
+
+.auth77-message {
+  min-height: 21px;
+  margin: 12px 0 0;
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.auth77-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.auth77-formfoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.auth77-theme-switch {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface-soft);
+}
+
+.auth77-theme-switch button {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.auth77-theme-switch button.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(18, 22, 27, .12);
+}
+
+/* Signed-in account */
+.auth77-account {
+  position: relative;
+  margin-left: 10px;
+}
+
+.auth77-account-button {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px 5px 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.auth77-account-button:hover {
+  background: var(--surface-soft);
+}
+
+.auth77-avatar {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--surface-blue);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.auth77-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.auth77-account-copy {
+  display: grid;
+  min-width: 0;
+  text-align: left;
+}
+
+.auth77-account-copy b {
+  max-width: 132px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth77-account-copy small {
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.auth77-chevron {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.auth77-menu {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  z-index: 1000;
+  width: 292px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+
+.auth77-menu[hidden] {
+  display: none;
+}
+
+.auth77-menu-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.auth77-menu-head .auth77-avatar {
+  width: 38px;
+  height: 38px;
+}
+
+.auth77-menu-head b,
+.auth77-menu-head small {
+  display: block;
+}
+
+.auth77-menu-head small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.auth77-menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 10px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.auth77-menu-action {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.auth77-menu-action:hover {
+  background: var(--surface-soft);
+}
+
+.auth77-menu-action.logout {
+  color: var(--red);
+}
+
+body.auth77-ready .roles {
+  margin-left: auto;
+}
+
+body.auth77-ready .roles .role:not(.active) {
+  display: none;
+}
+
+body.auth77-ready .roles .role.active {
+  pointer-events: none;
+}
+
+body.auth77-ready .v7-personbar.auth77-staff {
+  display: none !important;
+}
+
+body.auth77-ready .v7-personbar:not(.auth77-staff) .v7-personcell:first-child,
+body.auth77-ready .v7-personbar:not(.auth77-staff) .v7-personarrow {
+  display: none !important;
+}
+
+body.auth77-locked .top,
+body.auth77-locked .shell,
+body.auth77-locked .bottom,
+body.auth77-locked .modal,
+body.auth77-locked .v72-modal {
+  visibility: hidden !important;
+}
+
+html[data-theme="dark"] .auth77-shell {
+  box-shadow: 0 32px 90px rgba(0, 0, 0, .5);
+}
+
+html[data-theme="dark"] .auth77-story {
+  border-color: #29445a;
+}
+
+html[data-theme="dark"] .auth77-logo i,
+html[data-theme="dark"] .auth77-submit {
+  background: #f2f4f6;
+  color: #111419;
+}
+
+html[data-theme="dark"] .auth77-theme-switch button.active {
+  background: #31373e;
+  box-shadow: none;
+}
+
+.auth77-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 31000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(18, 22, 27, .54);
+  backdrop-filter: blur(9px);
+}
+
+.auth77-dialog[hidden] {
+  display: none;
+}
+
+.auth77-dialog-card {
+  width: min(440px, 100%);
+  padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+
+.auth77-dialog-card h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.auth77-dialog-card > p {
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.auth77-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.auth77-dialog-actions button {
+  min-height: 42px;
+  padding: 9px 14px;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.auth77-dialog-actions .cancel {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.auth77-dialog-actions .confirm {
+  border: 1px solid var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+
+@media (max-width: 920px) {
+  .auth77-account {
+    margin-left: auto;
+  }
+
+  .auth77-account-copy,
+  .auth77-chevron {
+    display: none;
+  }
+
+  .auth77-account-button {
+    min-height: 38px;
+    padding: 3px;
+    border-radius: 12px;
+  }
+
+  .auth77-avatar {
+    width: 30px;
+    height: 30px;
+  }
+
+  body.auth77-ready .roles {
+    width: auto !important;
+    order: initial !important;
+    margin: 0 0 0 auto !important;
+  }
+
+  body.auth77-ready .role {
+    min-width: 0 !important;
+    min-height: 32px;
+    padding: 6px 10px !important;
+  }
+
+  body.auth77-ready .v7-personbar {
+    width: 100%;
+    order: 4;
+  }
+
+  .auth77-menu {
+    position: fixed;
+    top: 64px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+
+  .auth77-shell {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .auth77-story {
+    padding: 28px;
+    border-right: 0;
+    border-bottom: 1px solid #cfe4f7;
+  }
+
+  .auth77-story h1 {
+    margin-top: 32px;
+    font-size: 38px;
+  }
+
+  .auth77-principle {
+    display: none;
+  }
+
+  .auth77-formpanel {
+    padding: 34px 28px;
+  }
+}
+
+@media (max-width: 560px) {
+  .auth77-gate {
+    align-items: start;
+    padding: 0;
+    background: var(--surface);
+  }
+
+  .auth77-shell {
+    width: 100%;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .auth77-story {
+    padding: 24px 22px;
+  }
+
+  .auth77-story h1 {
+    margin: 25px 0 10px;
+    font-size: 31px;
+  }
+
+  .auth77-story p {
+    font-size: 12px;
+  }
+
+  .auth77-formpanel {
+    align-items: start;
+    padding: 30px 22px 46px;
+  }
+
+  .auth77-formwrap h2 {
+    font-size: 27px;
+  }
+
+  .auth77-formfoot {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* Growth theme contract v7.9
+ * Light: white + turquoise. Dark: #191919 + Growth red.
+ * Color identifies the next decision; it does not become a decorative panel.
+ */
+:root {
+  --bg: #f5f7f7;
+  --card: #ffffff;
+  --surface: #ffffff;
+  --surface-soft: #f2f5f5;
+  --surface-blue: #e8f7f6;
+  --blue: #08a8a0;
+  --blue-hover: #078e88;
+  --blue2: #e8f7f6;
+  --accent: #08a8a0;
+}
+
+html[data-theme="dark"] {
+  --bg: #191919;
+  --card: #222222;
+  --surface: #222222;
+  --surface-soft: #2b2b2b;
+  --surface-blue: #2d1c1d;
+  --text: #f5f5f5;
+  --muted: #b3b3b3;
+  --subtle: #858585;
+  --line: #353535;
+  --line-strong: #4a4a4a;
+  --blue: #e50914;
+  --blue-hover: #f11621;
+  --blue2: #2d1c1d;
+  --accent: #e50914;
+  --green: #54c995;
+}
+
+html[data-theme="dark"] .top {
+  background: rgba(25, 25, 25, .96) !important;
+}
+
+html[data-theme="dark"] .side {
+  background: #1d1d1d !important;
+}
+
+html[data-theme="dark"] .v73-path > div,
+html[data-theme="dark"] .v73-actor,
+html[data-theme="dark"] .v73-request,
+html[data-theme="dark"] .v73-readonly {
+  border-color: var(--line) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .v73-path-vision {
+  background: var(--surface-soft) !important;
+}
+
+html[data-theme="dark"] .v73-path-issue,
+html[data-theme="dark"] .v73-request {
+  border-color: #5d2629 !important;
+  background: var(--surface-blue) !important;
+}
+
+html[data-theme="dark"] .v73-request h2,
+html[data-theme="dark"] .v73-request dd,
+html[data-theme="dark"] .v73-path b {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .btn.primary,
+html[data-theme="dark"] .primary {
+  border-color: var(--blue) !important;
+  background: var(--blue) !important;
+  color: #fff !important;
+}
+
+html[data-theme="dark"] button:focus-visible,
+html[data-theme="dark"] input:focus-visible,
+html[data-theme="dark"] textarea:focus-visible,
+html[data-theme="dark"] select:focus-visible {
+  outline-color: rgba(229, 9, 20, .35);
+}
+
+/* Login experience v7.8
+ * Netflix is used only as an interaction reference: a focused, single-purpose
+ * sign-in screen. Growth keeps its own typography, account model and themes.
+ */
+:root {
+  --auth77-accent: #08a8a0;
+  --auth77-accent-hover: #078e88;
+  --auth77-gate-bg: #f5f7f7;
+  --auth77-field-bg: #ffffff;
+  --auth77-field-border: #cfd6d8;
+  --auth77-field-text: #171a1d;
+}
+
+html[data-theme="dark"] {
+  --auth77-accent: #e50914;
+  --auth77-accent-hover: #f11621;
+  --auth77-gate-bg: #191919;
+  --auth77-field-bg: #333333;
+  --auth77-field-border: #444444;
+  --auth77-field-text: #ffffff;
+}
+
+.auth77-gate {
+  align-items: center;
+  padding: 24px 10px;
+  background: var(--auth77-gate-bg);
+}
+
+.auth77-shell {
+  display: block;
+  width: min(460px, 100%);
+  min-height: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.auth77-story {
+  display: block;
+  padding: 0 10px 46px;
+  border: 0;
+  background: transparent;
+  text-align: center;
+}
+
+.auth77-logo {
+  display: block;
+  color: var(--auth77-accent);
+  font-family: var(--font-ui);
+  font-size: 38px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -.045em;
+}
+
+.auth77-story > small,
+.auth77-story h1,
+.auth77-story p,
+.auth77-principle {
+  display: none;
+}
+
+.auth77-formpanel {
+  display: block;
+  padding: 0 10px;
+}
+
+.auth77-formwrap {
+  width: 100%;
+}
+
+.auth77-formwrap h2 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: var(--font-page-title);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -.02em;
+}
+
+.auth77-formwrap > p {
+  margin: 0 0 24px;
+  color: var(--muted);
+  font-size: var(--font-body);
+  font-weight: 400;
+  line-height: 18px;
+}
+
+.auth77-field {
+  margin-bottom: 16px;
+}
+
+.auth77-field > span {
+  margin-bottom: 6px;
+  color: var(--text);
+  font-size: var(--font-small);
+  font-weight: 600;
+}
+
+.auth77-field input,
+.auth77-field select {
+  min-height: 52px;
+  padding: 0 13px;
+  border-color: var(--auth77-field-border) !important;
+  border-radius: 2px;
+  background: var(--auth77-field-bg) !important;
+  color: var(--auth77-field-text) !important;
+  font-size: var(--font-body);
+  font-weight: 400;
+}
+
+.auth77-submit {
+  min-height: 50px;
+  margin-top: 4px;
+  border-radius: 4px;
+  background: var(--auth77-accent);
+  color: #ffffff;
+  font-size: var(--font-content-title);
+  font-weight: 600;
+}
+
+.auth77-submit:hover {
+  background: var(--auth77-accent-hover);
+  opacity: 1;
+}
+
+.auth77-link {
+  color: var(--auth77-accent);
+  font-size: var(--font-small);
+  font-weight: 600;
+}
+
+.auth77-formfoot {
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.auth77-theme-switch {
+  border-radius: 4px;
+}
+
+.auth77-theme-switch button,
+.auth77-theme-switch button.active {
+  border-radius: 2px;
+  font-size: var(--font-micro);
+}
+
+html[data-theme="dark"] .auth77-formwrap h2,
+html[data-theme="dark"] .auth77-field > span {
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .auth77-submit {
+  background: var(--auth77-accent) !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="dark"] .auth77-formwrap > p,
+html[data-theme="dark"] .auth77-message {
+  color: #b3b3b3;
+}
+
+html[data-theme="dark"] .auth77-message[data-tone="error"] {
+  color: #ff9ea3;
+}
+
+@media (max-width: 560px) {
+  .auth77-gate {
+    align-items: start;
+    padding: max(76px, env(safe-area-inset-top)) 10px
+      max(30px, env(safe-area-inset-bottom));
+    background: var(--auth77-gate-bg);
+  }
+
+  .auth77-shell {
+    min-height: 0;
+    background: transparent;
+  }
+
+  .auth77-story {
+    padding: 0 0 64px;
+  }
+
+  .auth77-formpanel {
+    padding: 0;
+  }
+
+  .auth77-formwrap h2 {
+    font-size: var(--font-page-title);
+  }
+
+  .auth77-formfoot {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .auth77-theme-switch {
+    align-self: stretch;
+  }
+}
+
+/* Semantic accent cleanup. */
+.v73-workspace > header span,
+.v73-gap span,
+.v73-asset-list button span {
+  color: var(--blue) !important;
+}
+
+.v73-mini-progress i {
+  background: var(--blue) !important;
+}
+
+.v73-next,
+.v73-gap.active {
+  border-color: color-mix(in srgb, var(--blue) 34%, var(--line)) !important;
+  background: var(--surface-blue) !important;
+}
+
+.v73-field textarea:focus {
+  border-color: var(--blue) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 18%, transparent) !important;
+}
+
+html[data-theme="dark"] .v73-criteria > div,
+html[data-theme="dark"] .v73-evidence-actual > span,
+html[data-theme="dark"] .v73-asset-list button {
+  border-color: var(--line) !important;
+  background: var(--surface-soft) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .v73-criteria span,
+html[data-theme="dark"] .v73-criteria p,
+html[data-theme="dark"] .v73-field > span {
+  color: var(--muted) !important;
+}

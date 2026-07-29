@@ -568,9 +568,10 @@
         button.classList.toggle("active", button.dataset.page === state.page);
       }
     });
-    document.title = "Growth OS v7.2";
+    const versionLabel = `v${window.GROWTH_VERSION || "7.9"}`;
+    document.title = `Growth OS ${versionLabel}`;
     const badge = document.querySelector(".brand small");
-    if (badge) badge.textContent = "v7.2";
+    if (badge) badge.textContent = versionLabel;
   };
 
   document.addEventListener("click", event => {

@@ -46,7 +46,7 @@ const staffId = migrated.organization.activeStaffId;
 const supportId = migrated.organization.activeSupportId;
 const workspace = migrated.staffWorkspaces[staffId];
 
-assert.equal(migrated.schemaVersion, 8);
+assert.equal(migrated.schemaVersion, 10);
 assert.equal(migrated.organization.staffMembers.length, 1);
 assert.equal(migrated.organization.supportMembers.length, 1);
 assert.equal(migrated.organization.managementMembers.length, 1);
@@ -215,6 +215,192 @@ const reimportedComparison = reimported.organization.library.find(asset => asset
 assert.equal(reimportedComparison.images.length, 3);
 assert.equal(reimportedComparison.images[1].role, "after");
 assert.equal(reimportedComparison.comparison.note, "シルエット比較");
-assert.equal(reimported.schemaVersion, 8);
+assert.equal(reimported.schemaVersion, 10);
+
+assert.equal(Core.inferJudgmentStage({ title: "仕上がりを観察する" }), "observation");
+assert.equal(Core.inferJudgmentStage({ judgmentStage: "transfer" }), "transfer");
+
+const capability = Core.deriveCapabilityMap({
+  visionProfile: {
+    statement: "条件を読み、自力で提案と施術を完結する美容師",
+    targetCustomers: "提案を求める顧客",
+    customerValue: "安心",
+    technicalIdentity: "設計できる",
+    serviceIdentity: "合意をつくる",
+    humanIdentity: "誠実に向き合う",
+    autonomyIdentity: "検証を自走する",
+    arrivalDefinition: "異なる条件で再現する"
+  },
+  currentQuestion: {
+    text: "要望の優先順位をどう合意するか",
+    whyNow: "直近2回で認識差が発生",
+    successConditions: ["施術前に合意できる"],
+    nextTest: "次のモデルで確認する",
+    checkpointId: "cp-service",
+    evidenceIds: ["e-service"]
+  },
+  journey: {
+    currentCheckpointId: "cp-service",
+    checkpoints: [
+      {
+        id: "cp-tech",
+        code: "CP-T",
+        title: "完成像の観察",
+        domain: "technical",
+        judgmentStage: "observation",
+        status: "done",
+        hours: 5,
+        actual: 5,
+        confidence: 100,
+        criteria: "完成像の差を説明できる",
+        evidenceRequirements: ["比較写真"]
+      },
+      {
+        id: "cp-service",
+        code: "CP-S",
+        title: "要望の解釈",
+        domain: "service",
+        judgmentStage: "interpretation",
+        status: "current",
+        hours: 10,
+        actual: 5,
+        confidence: 50,
+        criteria: "優先順位を合意できる",
+        evidenceRequirements: ["会話記録"]
+      }
+    ]
+  },
+  evidenceRecords: [{
+    id: "e-service",
+    checkpointId: "cp-service",
+    fact: "優先順位を復唱した",
+    judgment: "認識差を防げた",
+    whySo: ["顧客が同意した"],
+    soWhat: "別の要望でも再現する",
+    journeyImpact: { status: "applied" }
+  }],
+  practiceSessions: [{
+    checkpointId: "cp-service",
+    question: "優先順位を合意できるか",
+    result: "合意できた",
+    next: "別条件で再検証"
+  }],
+  supportSessions: [],
+  supportRequests: [{
+    id: "support-request-service",
+    staffId: "staff-1",
+    supportId: "support-1",
+    checkpointId: "cp-service",
+    checkpointCode: "CP-S",
+    checkpointTitle: "要望の解釈",
+    domain: "service",
+    judgmentStage: "interpretation",
+    questionText: "要望の優先順位をどう合意するか",
+    visionSnapshot: "条件を読み、自力で提案と施術を完結する美容師",
+    evidenceIds: ["e-service"],
+    whySo: "直近2回で認識差が発生",
+    soWhat: "比較質問と再検証条件を返す",
+    status: "pending"
+  }],
+  modelBookings: [],
+  library: [{
+    id: "orphan-library",
+    title: "未接続メモ",
+    journeyConnection: { status: "pending" }
+  }],
+  onboarding: {
+    selfAssessment: { technical: 7, service: 7, human: 7, autonomy: 7 }
+  }
+});
+assert.equal(capability.domains.find(item => item.id === "technical").score, 100);
+assert.equal(capability.domains.find(item => item.id === "service").score, 75);
+assert.equal(capability.domains.find(item => item.id === "human").status, "unconnected");
+assert.equal(capability.overall, 44);
+assert.equal(capability.stages.find(item => item.id === "observation").score, 100);
+assert.equal(capability.stages.find(item => item.id === "interpretation").score, 75);
+assert.equal(capability.orphan.library, 1);
+assert.equal(capability.systems.some(item => item.id === "library"), true);
+assert.equal(capability.systems.find(item => item.id === "support").status, "growing");
+assert.match(capability.calculation, /4つの能力領域/);
+
+const supportRequest = Core.normalizeSupportRequest({
+  checkpointId: "cp-service",
+  checkpointTitle: "要望の解釈",
+  domain: "service",
+  judgmentStage: "interpretation",
+  questionText: "要望の優先順位をどう合意するか",
+  evidenceIds: ["e-service", "e-service"],
+  whySo: "Evidenceで認識差が確認された",
+  soWhat: "次のモデル条件を決める"
+}, 0, { staffId: "staff-1", supportId: "support-1" });
+assert.equal(supportRequest.staffId, "staff-1");
+assert.equal(supportRequest.domain, "service");
+assert.equal(supportRequest.judgmentStage, "interpretation");
+assert.deepEqual(supportRequest.evidenceIds, ["e-service", "e-service"]);
+
+const loopAudit = Core.auditGrowthLoop({
+  visionProfile: { statement: "条件を読み、自力で提案と施術を完結する美容師" },
+  journey: {
+    currentCheckpointId: "cp-service",
+    checkpoints: [{
+      id: "cp-service",
+      domain: "service",
+      judgmentStage: "interpretation",
+      criteria: "優先順位を合意できる",
+      status: "current"
+    }]
+  },
+  currentQuestion: {
+    text: "要望の優先順位をどう合意するか",
+    whyNow: "認識差が発生している",
+    checkpointId: "cp-service"
+  },
+  modelBookings: [{
+    id: "model-1",
+    checkpointId: "cp-service",
+    date: "2099-01-01",
+    validationQuestion: "合意できるか",
+    menu: "カウンセリング"
+  }],
+  practiceSessions: [{
+    id: "practice-1",
+    modelId: "model-1",
+    checkpointId: "cp-service",
+    question: "合意できるか",
+    result: "合意できた",
+    next: "別条件で再検証"
+  }],
+  evidenceRecords: [{
+    id: "evidence-1",
+    practiceId: "practice-1",
+    checkpointId: "cp-service"
+  }],
+  journeyUpdates: [{
+    evidenceId: "evidence-1",
+    checkpointId: "cp-service",
+    status: "applied",
+    proposedQuestion: "要望の優先順位をどう合意するか"
+  }],
+  library: [{
+    id: "asset-1",
+    checkpointId: "cp-service",
+    decision: "優先順位を復唱する",
+    next: "別条件で使う"
+  }],
+  supportRequests: [{
+    id: "request-1",
+    status: "resolved",
+    resolutionId: "support-1"
+  }],
+  supportSessions: [{
+    id: "support-1",
+    checkpointId: "cp-service"
+  }]
+});
+assert.equal(loopAudit.edges.length, 11);
+assert.equal(loopAudit.missingCount, 0);
+assert.equal(loopAudit.percent, 100);
+assert.equal(loopAudit.mece.core.length, 9);
+assert.equal(loopAudit.mece.crossLayer.length, 2);
 
 console.log("team-core-v70 tests passed");

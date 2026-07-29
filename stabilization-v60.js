@@ -782,9 +782,10 @@
   }
 
   function refreshVersion() {
-    document.title = "Growth OS v6.0";
+    const versionLabel = `v${window.GROWTH_VERSION || "8.0"}`;
+    document.title = `Growth OS ${versionLabel}`;
     const badge = document.querySelector(".brand small");
-    if (badge) badge.textContent = "v6.0";
+    if (badge) badge.textContent = versionLabel;
   }
 
   const previousRenderV60 = render;

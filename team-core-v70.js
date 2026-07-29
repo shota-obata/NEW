@@ -5,7 +5,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createGrowthTeamCore() {
   "use strict";
 
-  const SCHEMA_VERSION = 8;
+  const SCHEMA_VERSION = 10;
   const WORKSPACE_KEYS = [
     "visionProfile", "deadline", "hours", "overtimeHours", "focusArea",
     "currentQuestion", "journey", "modelBookings",
@@ -79,6 +79,70 @@
     autonomy: { label: "自走力", color: "#9b63d8" }
   };
 
+  const JUDGMENT_STAGE_META = {
+    observation: { label: "観察", order: 1 },
+    interpretation: { label: "解釈", order: 2 },
+    design: { label: "設計", order: 3 },
+    execution: { label: "実行", order: 4 },
+    verification: { label: "確認", order: 5 },
+    correction: { label: "修正", order: 6 },
+    transfer: { label: "転用", order: 7 }
+  };
+
+  const CAPABILITY_CATALOG = {
+    technical: {
+      observation: "骨格・髪質・生え方を捉える",
+      interpretation: "完成像を構造へ読み替える",
+      design: "基準点と接続を決める",
+      execution: "設計を操作へ変換する",
+      verification: "完成像との差を発見する",
+      correction: "原因から修正方法を選ぶ",
+      transfer: "異条件へ判断原則を転用する"
+    },
+    service: {
+      observation: "言葉・表情・反応を捉える",
+      interpretation: "要望の背景と優先順位を読む",
+      design: "提案と合意の流れを組み立てる",
+      execution: "安心できる顧客体験を実行する",
+      verification: "理解と納得を確認する",
+      correction: "反応に合わせて接客を修正する",
+      transfer: "顧客条件が変わっても価値を保つ"
+    },
+    human: {
+      observation: "自分と周囲の状態を事実で捉える",
+      interpretation: "感情と事実を分けて意味づける",
+      design: "報告・相談・協働の順序を決める",
+      execution: "必要な行動を約束どおり実行する",
+      verification: "相手への影響と責任を確認する",
+      correction: "フィードバックから行動を直す",
+      transfer: "状況が変わっても姿勢を保つ"
+    },
+    autonomy: {
+      observation: "経験から違和感を発見する",
+      interpretation: "あらの奥にある成長の鍵を読む",
+      design: "価値ある問いと成功条件をつくる",
+      execution: "仮説検証を自分で一周させる",
+      verification: "Evidenceから判断を更新する",
+      correction: "問い・方法・現在地を修正する",
+      transfer: "学びをLibraryと次の問いへ転用する"
+    }
+  };
+
+  function inferJudgmentStage(value) {
+    const source = value && typeof value === "object" ? value : {};
+    if (JUDGMENT_STAGE_META[source.judgmentStage]) return source.judgmentStage;
+    const text = [
+      source.title, source.description, source.criteria, source.issue, source.type
+    ].filter(Boolean).join(" ");
+    if (/転用|転移|条件違い|異条件|再利用|応用|統合|Transfer|Integration/i.test(text)) return "transfer";
+    if (/修正|補正|直す|Correction/i.test(text)) return "correction";
+    if (/確認|比較|検証|診断|差を発見|Verification|Diagnostic/i.test(text)) return "verification";
+    if (/操作|実行|施工|施術|Execution|Required/i.test(text)) return "execution";
+    if (/設計|基準点|接続|提案|合意|Design|Critical/i.test(text)) return "design";
+    if (/解釈|完成像|読み|意味|理解|Interpretation/i.test(text)) return "interpretation";
+    return "observation";
+  }
+
   function cleanText(value, fallback) {
     const text = String(value || "").trim();
     return text || fallback || "";
@@ -138,6 +202,10 @@
       modelId: source.modelId || "",
       practiceId: source.practiceId || source.sourcePracticeId || "",
       sourceType: source.sourceType || (source.practiceId || source.sourcePracticeId ? "practice" : "legacy"),
+      domain: DOMAIN_META[source.domain] ? source.domain : "",
+      judgmentStage: JUDGMENT_STAGE_META[source.judgmentStage]
+        ? source.judgmentStage
+        : "",
       title,
       fact: cleanText(source.fact || source.result || source.note),
       judgment: cleanText(source.judgment || source.win || source.decision),
@@ -177,6 +245,41 @@
     };
   }
 
+  function normalizeSupportRequest(request, index, context) {
+    const source = request && typeof request === "object" ? clone(request) : {};
+    const allowedStatuses = ["pending", "acknowledged", "resolved", "cancelled"];
+    return Object.assign({
+      id: source.id || uid("support-request", `${context?.staffId || "staff"}-${index + 1}`),
+      version: 1,
+      staffId: source.staffId || context?.staffId || "",
+      supportId: source.supportId || context?.supportId || "",
+      checkpointId: source.checkpointId || context?.checkpointId || "",
+      checkpointCode: source.checkpointCode || "",
+      checkpointTitle: source.checkpointTitle || "",
+      domain: source.domain || "",
+      judgmentStage: JUDGMENT_STAGE_META[source.judgmentStage]
+        ? source.judgmentStage
+        : inferJudgmentStage(source),
+      questionText: cleanText(source.questionText || source.question || source.issue),
+      visionSnapshot: cleanText(source.visionSnapshot || source.vision),
+      evidenceIds: asArray(source.evidenceIds),
+      sourcePage: source.sourcePage || "home",
+      whySo: cleanText(source.whySo),
+      soWhat: cleanText(source.soWhat),
+      status: allowedStatuses.includes(source.status) ? source.status : "pending",
+      requestedAt: source.requestedAt || source.createdAt || isoNow(),
+      requestedBy: source.requestedBy || source.createdBy || "Staff",
+      acknowledgedAt: source.acknowledgedAt || "",
+      acknowledgedBy: source.acknowledgedBy || "",
+      resolvedAt: source.resolvedAt || "",
+      resolvedBy: source.resolvedBy || "",
+      resolutionId: source.resolutionId || ""
+    }, source, {
+      evidenceIds: asArray(source.evidenceIds),
+      status: allowedStatuses.includes(source.status) ? source.status : "pending"
+    });
+  }
+
   function normalizeModelBooking(model, index) {
     const source = model && typeof model === "object" ? clone(model) : {};
     return Object.assign({
@@ -212,6 +315,452 @@
       ? Math.max(0, Math.min(100, Math.round((now.getTime() - start.getTime()) / duration * 100)))
       : progress;
     return { required, actual, progress, planned };
+  }
+
+  function capabilityStatus(score, sourceCount) {
+    if (!sourceCount) return "unconnected";
+    if (score >= 80) return "stable";
+    if (score >= 45) return "growing";
+    return "emerging";
+  }
+
+  function requirementList(checkpoint) {
+    const explicit = asArray(checkpoint?.evidenceRequirements).filter(Boolean);
+    if (explicit.length) return explicit;
+    return String(checkpoint?.evidence || "")
+      .split("/")
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+
+  function checkpointCapabilityMetric(checkpoint, workspace) {
+    const records = asArray(workspace?.evidenceRecords)
+      .filter(record => record.checkpointId === checkpoint.id);
+    const requirements = requirementList(checkpoint);
+    const applied = records.filter(record => record.journeyImpact?.status === "applied").length;
+    const pending = records.filter(record => record.journeyImpact?.status !== "applied" &&
+      record.journeyImpact?.status !== "rejected").length;
+    const evidenceTarget = Math.max(1, requirements.length);
+    const evidenceScore = Math.min(100, Math.round(
+      (applied + pending * .35) / evidenceTarget * 100
+    ));
+    const hoursScore = Number(checkpoint.hours)
+      ? Math.min(100, Math.round((Number(checkpoint.actual) || 0) / Number(checkpoint.hours) * 100))
+      : 0;
+    const confidenceScore = Math.max(0, Math.min(100, Number(checkpoint.confidence) || 0));
+    const score = checkpoint.status === "done"
+      ? 100
+      : Math.round(evidenceScore * .5 + hoursScore * .3 + confidenceScore * .2);
+    const stage = inferJudgmentStage(checkpoint);
+    return {
+      id: checkpoint.id,
+      code: checkpoint.code || "",
+      title: checkpoint.title || "Checkpoint",
+      domain: DOMAIN_META[checkpoint.domain] ? checkpoint.domain : "technical",
+      judgmentStage: stage,
+      score,
+      status: capabilityStatus(score, records.length + Number(checkpoint.actual > 0)),
+      evidenceCount: records.length,
+      appliedEvidenceCount: applied,
+      pendingEvidenceCount: pending,
+      requiredEvidenceCount: requirements.length,
+      actualHours: Number(checkpoint.actual) || 0,
+      requiredHours: Number(checkpoint.hours) || 0,
+      confidence: confidenceScore,
+      criteria: checkpoint.criteria || checkpoint.description || "",
+      whySo: `${applied}件の反映済みEvidence、${pending}件の審査中Evidence、${Number(checkpoint.actual) || 0}/${Number(checkpoint.hours) || 0}時間`,
+      soWhat: checkpoint.status === "done"
+        ? "別条件で再現し、転用できるかを確認する"
+        : checkpoint.issue || "次のPracticeで成功条件を検証する"
+    };
+  }
+
+  function dataConnectionMetric(id, label, checks, detail) {
+    const validChecks = asArray(checks);
+    const passed = validChecks.filter(Boolean).length;
+    const score = validChecks.length ? Math.round(passed / validChecks.length * 100) : 0;
+    return {
+      id,
+      label,
+      score,
+      status: capabilityStatus(score, passed),
+      sourceCount: passed,
+      whySo: detail?.whySo || `${passed}/${validChecks.length}の接続条件を満たしています`,
+      soWhat: detail?.soWhat || (score < 100 ? "未接続の条件を次の実践で埋める" : "接続を次の判断へ再利用する"),
+      page: detail?.page || ""
+    };
+  }
+
+  function deriveCapabilityMap(workspace) {
+    const source = workspace && typeof workspace === "object" ? workspace : {};
+    const checkpoints = asArray(source.journey?.checkpoints);
+    const checkpointMetrics = checkpoints.map(checkpoint =>
+      checkpointCapabilityMetric(checkpoint, source)
+    );
+    const assessments = source.onboarding?.selfAssessment || {};
+    const domains = Object.keys(DOMAIN_META).map(domain => {
+      const related = checkpointMetrics.filter(item => item.domain === domain);
+      const weightTotal = related.reduce((sum, item) => sum + Math.max(1, item.requiredHours), 0);
+      const score = weightTotal
+        ? Math.round(related.reduce((sum, item) =>
+          sum + item.score * Math.max(1, item.requiredHours), 0
+        ) / weightTotal)
+        : 0;
+      const evidenceCount = related.reduce((sum, item) => sum + item.evidenceCount, 0);
+      const appliedEvidenceCount = related.reduce((sum, item) =>
+        sum + item.appliedEvidenceCount, 0
+      );
+      const selfScore = Math.round(Math.max(0, Math.min(7, Number(assessments[domain]) || 0)) / 7 * 100);
+      return {
+        id: domain,
+        label: DOMAIN_META[domain].label,
+        color: DOMAIN_META[domain].color,
+        score,
+        selfScore,
+        status: capabilityStatus(score, related.length),
+        checkpointCount: related.length,
+        evidenceCount,
+        appliedEvidenceCount,
+        sourceCount: related.length + evidenceCount,
+        checkpoints: related,
+        whySo: related.length
+          ? `${related.length}個のCheckpointと${evidenceCount}件のEvidenceから算出`
+          : "この能力領域へ接続されたCheckpointがありません",
+        soWhat: related.length
+          ? (score >= 80 ? "異なる条件でも再現・転用できるかを確認する" : "最も浅い判断工程を次の問いへ接続する")
+          : "Visionとの関係を確認し、必要ならCheckpointを設計する"
+      };
+    });
+
+    const stages = Object.keys(JUDGMENT_STAGE_META).map(stage => {
+      const related = checkpointMetrics.filter(item => item.judgmentStage === stage);
+      const score = related.length
+        ? Math.round(related.reduce((sum, item) => sum + item.score, 0) / related.length)
+        : 0;
+      return {
+        id: stage,
+        label: JUDGMENT_STAGE_META[stage].label,
+        order: JUDGMENT_STAGE_META[stage].order,
+        score,
+        status: capabilityStatus(score, related.length),
+        sourceCount: related.length,
+        checkpoints: related,
+        whySo: related.length
+          ? `${related.length}個のCheckpointがこの判断工程へ接続`
+          : "この判断工程へ接続されたCheckpointがありません",
+        soWhat: related.length
+          ? "関連Evidenceを比較し、判断が止まる条件を確認する"
+          : "次のCheckpoint設計時に、この工程が必要か確認する"
+      };
+    });
+
+    const profile = source.visionProfile || {};
+    const currentQuestion = source.currentQuestion || {};
+    const practices = asArray(source.practiceSessions);
+    const support = asArray(source.supportSessions);
+    const supportRequests = asArray(source.supportRequests);
+    const models = asArray(source.modelBookings);
+    const evidence = asArray(source.evidenceRecords);
+    const library = asArray(source.library);
+    const futureModels = models.filter(model => !model.date ||
+      model.date >= new Date().toISOString().slice(0, 10));
+    const connectedLibrary = library.filter(asset =>
+      asset.checkpointId || asset.journeyConnection?.status === "connected"
+    );
+    const reusableLibrary = library.filter(asset =>
+      asset.rule && asArray(asset.evidenceIds).length
+    );
+    const systems = [
+      dataConnectionMetric("vision", "Vision Profile", [
+        profile.statement && !String(profile.statement).includes("設定してください"),
+        profile.targetCustomers,
+        profile.customerValue,
+        profile.technicalIdentity,
+        profile.serviceIdentity,
+        profile.humanIdentity,
+        profile.autonomyIdentity,
+        profile.arrivalDefinition
+      ], {
+        page: "vision",
+        whySo: "完成像・顧客価値・4能力領域・期限時点の到達像を確認",
+        soWhat: "不足項目がJourneyの設計漏れを生んでいないか確認する"
+      }),
+      dataConnectionMetric("journey", "Journey / Checkpoint", [
+        checkpoints.length,
+        source.journey?.currentCheckpointId,
+        checkpoints.every(item => item.criteria || item.description),
+        checkpoints.every(item => item.domain),
+        checkpoints.every(item => item.judgmentStage || inferJudgmentStage(item)),
+        checkpoints.some(item => item.status === "current")
+      ], {
+        page: "journey",
+        whySo: `${checkpoints.length}個のCheckpoint、Current ${source.journey?.currentCheckpointId ? "設定済み" : "未設定"}`,
+        soWhat: "未接続領域と判断工程をJourneyへ反映する"
+      }),
+      dataConnectionMetric("practice", "Practice", practices.length ? [
+        practices.every(item => item.checkpointId),
+        practices.every(item => item.question),
+        practices.every(item => item.result),
+        practices.every(item => item.next)
+      ] : [], {
+        page: "practice",
+        whySo: `${practices.length}件のPracticeを問い・結果・次の検証で監査`,
+        soWhat: practices.length ? "Evidence審査とJourney反映を確認する" : "Current Checkpointに接続したPracticeを実行する"
+      }),
+      dataConnectionMetric("support", "Support", (support.length || supportRequests.length) ? [
+        supportRequests.length > 0,
+        supportRequests.every(item => item.checkpointId && item.questionText && item.visionSnapshot),
+        support.length > 0,
+        support.length > 0 &&
+          support.every(item => item.checkpointId && item.compare && item.diagnosis && item.next),
+        supportRequests.every(item => item.status !== "resolved" || item.resolutionId)
+      ] : [], {
+        page: "support",
+        whySo: `${supportRequests.length}件の依頼と${support.length}件のSupport判断を、文脈・診断・再検証で監査`,
+        soWhat: support.length
+          ? "判断修正が次のPracticeへ反映されたか確認する"
+          : (supportRequests.length ? "依頼の文脈を基に比較質問と再検証条件を作る" : "答えではなく比較質問をSupportへ依頼する")
+      }),
+      dataConnectionMetric("planner", "Model Planner", futureModels.length ? [
+        futureModels.every(item => item.date),
+        futureModels.every(item => item.checkpointId),
+        futureModels.every(item => item.validationQuestion),
+        futureModels.every(item => item.menu)
+      ] : [], {
+        page: "planner",
+        whySo: `${futureModels.length}件の今後のモデル予定をCheckpoint・問いとの接続で監査`,
+        soWhat: futureModels.length ? "最も近いモデルをCurrent Checkpointの検証へ使う" : "次の問いを検証できるモデル条件を先に確保する"
+      }),
+      dataConnectionMetric("evidence", "Evidence", evidence.length ? [
+        evidence.every(item => item.checkpointId),
+        evidence.every(item => item.fact),
+        evidence.every(item => item.judgment),
+        evidence.every(item => asArray(item.whySo).length),
+        evidence.every(item => item.soWhat || item.nextTest),
+        evidence.some(item => item.journeyImpact?.status === "applied")
+      ] : [], {
+        page: "evidence",
+        whySo: `${evidence.length}件中${evidence.filter(item => item.journeyImpact?.status === "applied").length}件がJourney反映済み`,
+        soWhat: evidence.length ? "未反映Evidenceを審査し、現在地を更新する" : "Practiceを事実・判断・Why So?・So What?へ変換する"
+      }),
+      dataConnectionMetric("question", "今回の問い", [
+        currentQuestion.text,
+        currentQuestion.whyNow,
+        asArray(currentQuestion.successConditions).length,
+        currentQuestion.nextTest,
+        currentQuestion.checkpointId,
+        asArray(currentQuestion.evidenceIds).length
+      ], {
+        page: "issue",
+        whySo: "問い・Why Now・成功条件・次の検証・Checkpoint・Evidenceの6接続を確認",
+        soWhat: "不足する接続を補い、次のモデルで答えられる問いへ絞る"
+      }),
+      dataConnectionMetric("library", "Library", library.length ? [
+        connectedLibrary.length === library.length,
+        reusableLibrary.length > 0,
+        library.every(asset => asset.next),
+        library.every(asset => asset.decision || asset.rule)
+      ] : [], {
+        page: "library",
+        whySo: `${connectedLibrary.length}/${library.length}件がJourney接続、${reusableLibrary.length}件がEvidence付き原則`,
+        soWhat: library.length ? "未接続資産をCheckpointまたは次のPracticeへ戻す" : "検証済みEvidenceを再利用可能な原則へ変える"
+      })
+    ];
+
+    const domainSourceCount = domains.reduce((sum, domain) => sum + domain.sourceCount, 0);
+    const overall = domainSourceCount
+      ? Math.round(domains.reduce((sum, domain) => sum + domain.score, 0) / domains.length)
+      : 0;
+    const orphanEvidence = evidence.filter(item => !item.checkpointId).length;
+    const orphanPractice = practices.filter(item => !item.checkpointId).length;
+    const orphanLibrary = library.filter(item =>
+      !item.checkpointId && item.journeyConnection?.status !== "connected"
+    ).length;
+    return {
+      overall,
+      status: capabilityStatus(overall, domainSourceCount),
+      domains,
+      stages,
+      systems,
+      checkpointMetrics,
+      orphan: {
+        evidence: orphanEvidence,
+        practice: orphanPractice,
+        library: orphanLibrary,
+        total: orphanEvidence + orphanPractice + orphanLibrary
+      },
+      calculation: "4つの能力領域を同じ重みで集約。各Checkpointは反映済みEvidence 50%・実践時間 30%・確信度 20%。審査中Evidenceは35%だけ暫定反映し、未接続領域は0%のまま表示。完了Checkpointは100%。"
+    };
+  }
+
+  function growthLoopEdge(id, label, expected, connected, detail) {
+    const required = Math.max(1, Number(expected) || 0);
+    const actual = Math.max(0, Math.min(required, Number(connected) || 0));
+    return {
+      id,
+      label,
+      expected: required,
+      connected: actual,
+      percent: Math.round(actual / required * 100),
+      status: actual === required ? "connected" : actual > 0 ? "partial" : "missing",
+      page: detail?.page || "",
+      whySo: detail?.whySo || `${actual}/${required}件が次の判断へ接続されています`,
+      soWhat: detail?.soWhat || "未接続の入口と出口を確認し、次の判断へ渡す"
+    };
+  }
+
+  function auditGrowthLoop(workspace) {
+    const source = workspace && typeof workspace === "object" ? workspace : {};
+    const checkpoints = asArray(source.journey?.checkpoints);
+    const checkpointIds = new Set(checkpoints.map(item => item.id).filter(Boolean));
+    const currentCheckpoint = checkpoints.find(item =>
+      item.id === source.journey?.currentCheckpointId
+    ) || checkpoints.find(item => item.status === "current") || null;
+    const question = source.currentQuestion || source.issue || {};
+    const models = asArray(source.modelBookings);
+    const practices = asArray(source.practiceSessions);
+    const evidence = asArray(source.evidenceRecords);
+    const updates = asArray(source.journeyUpdates);
+    const library = asArray(source.library);
+    const requests = asArray(source.supportRequests);
+    const support = asArray(source.supportSessions);
+    const profile = source.visionProfile || {};
+    const visionReady = Boolean(
+      profile.statement &&
+      !String(profile.statement).includes("設定してください")
+    );
+    const visionJourneyConnected = visionReady && checkpoints.some(item =>
+      item.domain && (item.criteria || item.description)
+    );
+    const gapReady = Boolean(
+      currentCheckpoint &&
+      (question.whyNow || currentCheckpoint.gap || currentCheckpoint.routeReason)
+    );
+    const issueReady = Boolean(question.text || question.title || source.issue?.title);
+    const issueCheckpointConnected = Boolean(
+      issueReady &&
+      question.checkpointId &&
+      checkpointIds.has(question.checkpointId)
+    );
+    const currentModels = models.filter(model =>
+      !currentCheckpoint || model.checkpointId === currentCheckpoint.id
+    );
+    const modelIds = new Set(models.map(item => item.id).filter(Boolean));
+    const plannerPracticeConnected = practices.filter(item =>
+      item.modelId && modelIds.has(item.modelId) &&
+      (!item.checkpointId || checkpointIds.has(item.checkpointId))
+    ).length;
+    const practiceIds = new Set(practices.map(item => item.id).filter(Boolean));
+    const evidenceByPractice = evidence.filter(item =>
+      item.practiceId && practiceIds.has(item.practiceId)
+    ).length;
+    const evidenceIds = new Set(evidence.map(item => item.id).filter(Boolean));
+    const updatesByEvidence = updates.filter(item =>
+      item.evidenceId && evidenceIds.has(item.evidenceId)
+    ).length;
+    const appliedUpdates = updates.filter(item =>
+      item.status === "applied" && item.proposedQuestion
+    );
+    const nextIssueConnected = appliedUpdates.filter(item =>
+      issueReady && (
+        item.proposedQuestion === question.text ||
+        item.proposedQuestion === question.title ||
+        item.checkpointId === question.checkpointId
+      )
+    ).length;
+    const connectedLibrary = library.filter(item =>
+      (item.checkpointId && checkpointIds.has(item.checkpointId)) ||
+      item.journeyConnection?.status === "connected"
+    ).length;
+    const supportIds = new Set(support.map(item => item.id).filter(Boolean));
+    const resolvedRequests = requests.filter(item =>
+      item.status === "resolved" &&
+      item.resolutionId &&
+      supportIds.has(item.resolutionId)
+    ).length;
+    const edges = [
+      growthLoopEdge("vision-journey", "Vision → Journey", 1, visionJourneyConnected ? 1 : 0, {
+        page: "vision",
+        whySo: visionJourneyConnected
+          ? "完成像が能力領域と到達条件を持つCheckpointへ分解されています"
+          : "VisionまたはVisionを分解したCheckpointが不足しています",
+        soWhat: "Visionを4能力領域と判断工程へ分解し、Journeyへ配置する"
+      }),
+      growthLoopEdge("journey-gap", "Journey → Vision Gap", 1, gapReady ? 1 : 0, {
+        page: "journey",
+        whySo: gapReady
+          ? "Current Checkpointに、現在地との差を示す根拠があります"
+          : "Current Checkpointはありますが、Visionとの差を説明する根拠がありません",
+        soWhat: "現在地と到達条件を比較し、なぜ今この差を扱うか言語化する"
+      }),
+      growthLoopEdge("gap-issue", "Vision Gap → 今回の問い", 1, gapReady && issueReady ? 1 : 0, {
+        page: "issue",
+        whySo: gapReady && issueReady
+          ? "Visionとの差が、答えられる一つの問いへ変換されています"
+          : "差分または今回の問いが未確定です",
+        soWhat: "差分を、次のモデルで検証できる疑問文へ変換する"
+      }),
+      growthLoopEdge("issue-checkpoint", "今回の問い → Checkpoint", 1, issueCheckpointConnected ? 1 : 0, {
+        page: "issue",
+        whySo: issueCheckpointConnected
+          ? "今回の問いはCurrent Checkpointへ一元接続されています"
+          : "問いの編集元または対応Checkpointが特定できません",
+        soWhat: "問いのSource of TruthをCurrent Checkpointへ接続する"
+      }),
+      growthLoopEdge("checkpoint-planner", "Checkpoint → Model Planner", 1, currentModels.length ? 1 : 0, {
+        page: "planner",
+        whySo: `${currentModels.length}件のモデル予定がCurrent Checkpointへ接続されています`,
+        soWhat: "問いを検証できる骨格・髪質・メニュー条件のモデルを先に確保する"
+      }),
+      growthLoopEdge("planner-practice", "Model Planner → Practice", models.length, plannerPracticeConnected, {
+        page: "practice",
+        whySo: `${plannerPracticeConnected}/${Math.max(1, models.length)}件が予定からPracticeへ進んでいます`,
+        soWhat: "予定したモデル条件と問いをPracticeへ引き継ぐ"
+      }),
+      growthLoopEdge("practice-evidence", "Practice → Evidence", practices.length, evidenceByPractice, {
+        page: "evidence",
+        whySo: `${evidenceByPractice}/${Math.max(1, practices.length)}件のPracticeがEvidenceへ変換されています`,
+        soWhat: "実践を感想で終えず、事実・判断・Why So?・So What?で残す"
+      }),
+      growthLoopEdge("evidence-update", "Evidence → Journey Update", evidence.length, updatesByEvidence, {
+        page: "evidence",
+        whySo: `${updatesByEvidence}/${Math.max(1, evidence.length)}件のEvidenceにJourney反映判断があります`,
+        soWhat: "Evidenceを審査し、現在地を更新・保留・棄却のいずれかに決める"
+      }),
+      growthLoopEdge("update-issue", "Journey Update → 次の問い", updates.length, nextIssueConnected, {
+        page: "issue",
+        whySo: `${nextIssueConnected}/${Math.max(1, updates.length)}件の更新が次の問いへ接続されています`,
+        soWhat: "現在地の変化から、問いを維持・更新・完了のいずれかに決める"
+      }),
+      growthLoopEdge("library-loop", "Library → Journey / Checkpoint", library.length, connectedLibrary, {
+        page: "library",
+        whySo: `${connectedLibrary}/${Math.max(1, library.length)}件の知識資産が成長構造へ戻されています`,
+        soWhat: "保存した知識をCheckpoint・次のPractice・Journeyのいずれかへ接続する"
+      }),
+      growthLoopEdge("support-loop", "Staff → Support → 次のPractice", requests.length, resolvedRequests, {
+        page: "support",
+        whySo: `${resolvedRequests}/${Math.max(1, requests.length)}件の依頼が判断修正まで完了しています`,
+        soWhat: "Vision・問い・Checkpoint・Evidenceを渡し、比較質問と再検証条件を次のPracticeへ返す"
+      })
+    ];
+    const connectedCount = edges.filter(item => item.status === "connected").length;
+    const partialCount = edges.filter(item => item.status === "partial").length;
+    const missingCount = edges.filter(item => item.status === "missing").length;
+    return {
+      edges,
+      connectedCount,
+      partialCount,
+      missingCount,
+      percent: Math.round(edges.reduce((sum, item) => sum + item.percent, 0) / edges.length),
+      next: edges.find(item => item.status === "partial") ||
+        edges.find(item => item.status === "missing") ||
+        null,
+      mece: {
+        core: edges.slice(0, 9).map(item => item.id),
+        crossLayer: edges.slice(9).map(item => item.id),
+        statement: "コアループ9接続と横断レイヤー2接続を別の切り口として監査"
+      }
+    };
   }
 
   function normalizeVisionProfile(profile, workspace) {
@@ -445,6 +994,7 @@
         title: seed.title,
         description: seed.criteria,
         domain,
+        judgmentStage: inferJudgmentStage(seed),
         type: seed.type,
         date: routeDate(today, deadline, (index + 1) / checkpointSeeds.length),
         status,
@@ -548,6 +1098,7 @@
     result.evidenceRequirements = asArray(result.evidenceRequirements);
     result.order = Number(result.order) || index + 1;
     result.domain = result.domain || "technical";
+    result.judgmentStage = inferJudgmentStage(result);
     result.description = result.description || result.criteria || "";
     result.confidence = Math.max(0, Math.min(100, Number(result.confidence) || 0));
     result.source = result.source || "legacy";
@@ -599,6 +1150,13 @@
       );
       delete checkpoint.evidenceItems;
     });
+    evidenceRecords.forEach(record => {
+      const checkpoint = checkpoints.find(item => item.id === record.checkpointId);
+      if (!record.domain && checkpoint) record.domain = checkpoint.domain;
+      if (!record.judgmentStage && checkpoint) {
+        record.judgmentStage = checkpoint.judgmentStage;
+      }
+    });
     const journeySeed = Object.assign({
       version: Number(sourceJourney.version) || 1,
       routeMode: sourceJourney.routeMode || "legacy",
@@ -647,7 +1205,12 @@
       libraryRefs: blank ? [] : asArray(source.libraryRefs),
       evidenceRecords: blank ? [] : evidenceRecords,
       journeyUpdates: blank ? [] : asArray(source.journeyUpdates).map(normalizeJourneyUpdate),
-      supportRequests: blank ? [] : asArray(source.supportRequests),
+      supportRequests: blank ? [] : asArray(source.supportRequests).map((request, index) =>
+        normalizeSupportRequest(request, index, {
+          staffId,
+          supportId: source.primarySupportId || ""
+        })
+      ),
       primarySupportId: source.primarySupportId || "",
       supportMemberIds: asArray(source.supportMemberIds),
       onboarding: Object.assign({
@@ -828,6 +1391,8 @@
       modelId: "",
       modelName: "",
       checkpointId: "",
+      domain: "",
+      judgmentStage: "",
       evidenceIds: [],
       journeyConnection: { status: "pending", checkpointId: "", journeyItemId: "" },
       updatedBy: "System",
@@ -1001,6 +1566,11 @@
     createPersonalJourney,
     isDefaultJourney,
     DOMAIN_META,
+    JUDGMENT_STAGE_META,
+    CAPABILITY_CATALOG,
+    inferJudgmentStage,
+    deriveCapabilityMap,
+    auditGrowthLoop,
     createWorkspace,
     workspaceFromState,
     stateFromWorkspace,
@@ -1008,6 +1578,7 @@
     normalizeCurrentQuestion,
     normalizeEvidenceRecord,
     normalizeJourneyUpdate,
+    normalizeSupportRequest,
     normalizeModelBooking,
     deriveJourneyMetrics,
     normalizeAsset,

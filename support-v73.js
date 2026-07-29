@@ -118,6 +118,15 @@
       .reverse();
   }
 
+  function activeSupportRequest(checkpoint) {
+    return list(state.supportRequests)
+      .filter(item => ["pending", "acknowledged"].includes(item.status))
+      .filter(item => !checkpoint || !item.checkpointId || item.checkpointId === checkpoint.id)
+      .slice()
+      .sort((a, b) => String(b.requestedAt || "").localeCompare(String(a.requestedAt || "")))[0] ||
+      null;
+  }
+
   function relatedAssets(checkpoint) {
     const staffId = actor().staffId;
     const terms = [
@@ -151,6 +160,7 @@
   function draft(root) {
     const checkpoint = currentCheckpoint();
     const context = actor();
+    const request = activeSupportRequest(checkpoint);
     const gapType = selectedGap(root);
     const gap = GAP_TYPES.find(item => item.id === gapType) || GAP_TYPES[1];
     const conditions = field(root, "v73SuccessConditions")
@@ -167,11 +177,13 @@
       actorId: context.actorId,
       actorName: context.actorName,
       actorRole: context.actorRole,
+      supportRequestId: request?.id || "",
       checkpointId: checkpoint?.id || "",
       checkpointCode: checkpoint?.code || "",
       checkpointTitle: checkpoint?.title || "",
       checkpointType: checkpoint?.type || "",
       domain: checkpoint?.domain || "",
+      judgmentStage: checkpoint?.judgmentStage || Core.inferJudgmentStage(checkpoint),
       visionSnapshot: profile().statement || state.vision || "",
       issue: issueBefore,
       issueBefore,
@@ -222,6 +234,7 @@
       checkpointId: value.checkpointId,
       checkpointCode: value.checkpointCode,
       domain: value.domain,
+      judgmentStage: value.judgmentStage,
       gapType: value.gapType,
       gapLabel: value.gapLabel,
       sourceSupportId: value.id,
@@ -242,6 +255,10 @@
   }
 
   function saveDecision(mode) {
+    if (actor().actorRole !== "support") {
+      alert("判断修正はSupportアカウントから行ってください。");
+      return;
+    }
     const root = document.getElementById("support");
     const checkpoint = currentCheckpoint();
     if (!root || !checkpoint) return;
@@ -271,6 +288,15 @@
       action: "Support判断修正",
       detail: `${value.checkpointCode} ${value.gapLabel}`
     });
+    if (value.supportRequestId) {
+      const request = list(state.supportRequests).find(item => item.id === value.supportRequestId);
+      if (request) {
+        request.status = "resolved";
+        request.resolvedAt = value.createdAt;
+        request.resolvedBy = value.supportName;
+        request.resolutionId = value.id;
+      }
+    }
 
     if (mode === "apply" || mode === "library") {
       state.currentQuestion = Core.normalizeCurrentQuestion(Object.assign(
@@ -340,9 +366,11 @@
     const checkpoint = currentCheckpoint();
     const vision = profile();
     const context = actor();
+    const canEdit = context.actorRole === "support";
     const staff = staffMember();
     const coverage = evidenceCoverage(checkpoint);
     const sessions = supportSessionsFor(checkpoint);
+    const request = activeSupportRequest(checkpoint);
     const assets = relatedAssets(checkpoint);
     const defaultGap = recommendedGap(checkpoint);
     root.dataset.gap = defaultGap;
@@ -357,11 +385,16 @@
           <p class="lead">不足を人格評価にせず、Vision到達を止めている判断構造を次の検証へ変えます。</p>
         </div>
         <div class="v73-actor">
-          <span class="v73-mini-avatar support">${initials(context.actorName)}</span>
-          <div><small>SUPPORT</small><b>${safe(context.actorName)}</b></div>
-          <i>→</i>
-          <span class="v73-mini-avatar">${initials(staff.name)}</span>
-          <div><small>STAFF</small><b>${safe(staff.name)}</b></div>
+          ${canEdit ? `
+            <span class="v73-mini-avatar support">${initials(context.actorName)}</span>
+            <div><small>SUPPORT</small><b>${safe(context.actorName)}</b></div>
+            <i>→</i>
+            <span class="v73-mini-avatar">${initials(staff.name)}</span>
+            <div><small>STAFF</small><b>${safe(staff.name)}</b></div>
+          ` : `
+            <span class="v73-mini-avatar">${initials(staff.name)}</span>
+            <div><small>${safe(context.actorRole === "management" ? "VIEWING STAFF" : "REQUESTER")}</small><b>${safe(staff.name)}</b></div>
+          `}
         </div>
       </header>
 
@@ -381,6 +414,30 @@
           <b>${safe(state.issue?.title || checkpoint?.issue || "未設定")}</b>
         </div>
       </section>
+
+      ${request ? `
+        <section class="v73-request" data-request-id="${safe(request.id)}">
+          <div>
+            <span>SUPPORT REQUEST · ${safe(request.status === "acknowledged" ? "確認済み" : "未確認")}</span>
+            <h2>${safe(request.questionText || state.issue?.title || "今回の問い")}</h2>
+            <p>${safe(request.whySo || "Staffから現在の問いが共有されました。")}</p>
+          </div>
+          <dl>
+            <div><dt>Checkpoint</dt><dd>${safe(request.checkpointCode || checkpoint?.code || "未接続")} ${safe(request.checkpointTitle || checkpoint?.title || "")}</dd></div>
+            <div><dt>Evidence</dt><dd>${list(request.evidenceIds).length}件を添付</dd></div>
+            <div><dt>依頼元</dt><dd>${safe(request.sourcePage || "Home")}</dd></div>
+          </dl>
+          ${canEdit && request.status === "pending"
+            ? `<button class="btn secondary" data-v73-action="acknowledge-request" data-request-id="${safe(request.id)}">依頼を確認</button>`
+            : `<span class="v73-request-ready">${safe(
+              request.status === "resolved"
+                ? "判断修正が返されました"
+                : canEdit
+                  ? "比較質問を作成中"
+                  : "Supportへ共有済み"
+            )}</span>`}
+        </section>
+      ` : ""}
 
       <div class="v73-layout">
         <main class="v73-main">
@@ -503,15 +560,50 @@
         <div>${sessions.length ? sessions.map(sessionDetail).join("") : "<div class=\"v73-empty-history\">まだ判断修正の履歴はありません。</div>"}</div>
       </section>
     `;
+    if (!canEdit) {
+      const layout = root.querySelector(".v73-layout");
+      if (layout) {
+        const isStaff = context.actorRole === "staff";
+        layout.outerHTML = `
+          <section class="v73-readonly">
+            <div>
+              <span>${safe(isStaff ? "REQUEST SENT" : "READ ONLY")}</span>
+              <h2>${safe(isStaff
+                ? "問いと根拠を、Supportへ共有しました。"
+                : "Supportの判断修正を、育成構造として確認します。")}</h2>
+              <p>${safe(isStaff
+                ? "Vision・Current Checkpoint・今回の問い・関連Evidenceを一括で渡しています。Supportから比較質問と次の再検証条件が返るまで、必要なEvidenceを追加できます。"
+                : "Managementは個人へ答えを出さず、依頼・Evidence・Support判断・次のPracticeの接続が止まっていないかを確認します。")}</p>
+            </div>
+            <dl>
+              <div><dt>WHY SO?</dt><dd>${safe(request?.whySo || "現在のCheckpointと問いを根拠に依頼しました。")}</dd></div>
+              <div><dt>SO WHAT?</dt><dd>${safe(request?.soWhat || "Supportが判断基準と再検証条件を返します。")}</dd></div>
+              <div><dt>次の行動</dt><dd>${safe(isStaff
+                ? (coverage.missing > 0
+                  ? `不足しているEvidenceを${coverage.missing}件追加する`
+                  : "Supportの比較質問を待ち、次のPractice条件を確認する")
+                : "未確認依頼と未解決依頼の滞留を確認する")}</dd></div>
+            </dl>
+            <div class="v73-readonly-actions">
+              ${isStaff
+                ? `<button class="btn secondary" data-page="evidence">Evidenceを追加</button>
+                   <button class="btn primary" data-page="home">Homeへ戻る</button>`
+                : `<button class="btn primary" data-page="management">Managementへ戻る</button>`}
+            </div>
+          </section>
+        `;
+      }
+    }
   }
 
   const previousRender = render;
   render = function renderV73() {
     previousRender();
     renderSupportV73();
-    document.title = "Growth OS v7.3";
+    const versionLabel = `v${window.GROWTH_VERSION || "7.9"}`;
+    document.title = `Growth OS ${versionLabel}`;
     const badge = document.querySelector(".brand small");
-    if (badge) badge.textContent = "v7.3";
+    if (badge) badge.textContent = versionLabel;
   };
 
   document.addEventListener("click", event => {
@@ -520,6 +612,18 @@
     const root = document.getElementById("support");
     if (!root) return;
     const action = button.dataset.v73Action;
+    if (action === "acknowledge-request") {
+      if (actor().actorRole !== "support") return;
+      const request = list(state.supportRequests).find(item => item.id === button.dataset.requestId);
+      if (!request) return;
+      const context = actor();
+      request.status = "acknowledged";
+      request.acknowledgedAt = isoNow();
+      request.acknowledgedBy = context.actorName;
+      commit();
+      render();
+      return;
+    }
     if (action === "select-gap") {
       root.dataset.gap = button.dataset.gap;
       root.querySelectorAll(".v73-gap").forEach(item => {
