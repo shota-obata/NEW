@@ -1270,3 +1270,159 @@ html[data-theme="dark"] .v73-criteria p,
 html[data-theme="dark"] .v73-field > span {
   color: var(--muted) !important;
 }
+
+/* Owner profile switcher: one authenticated account, role-specific OS views. */
+.auth81-profile-picker {
+  width: min(920px, calc(100% - 20px));
+  margin: auto;
+  padding: 34px 10px;
+  color: var(--text);
+}
+
+.auth81-profile-picker > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.auth81-profile-copy {
+  margin: 64px 0 24px;
+  text-align: center;
+}
+
+.auth81-profile-copy h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.auth81-profile-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.auth81-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.auth81-profile {
+  min-height: 174px;
+  padding: 22px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface, var(--card));
+  color: var(--text);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: 1fr auto;
+  gap: 20px 10px;
+  text-align: left;
+  transition: border-color .18s ease, transform .18s ease, background .18s ease;
+}
+
+.auth81-profile:hover,
+.auth81-profile:focus-visible {
+  border-color: var(--blue);
+  background: var(--surface-blue);
+  outline: none;
+  transform: translateY(-2px);
+}
+
+.auth81-profile-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--surface-soft);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.auth81-profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.auth81-profile > span:nth-child(2) {
+  align-self: end;
+  display: grid;
+  gap: 4px;
+}
+
+.auth81-profile b {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.auth81-profile small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.auth81-profile i {
+  align-self: end;
+  font-size: 22px;
+  font-style: normal;
+}
+
+.auth81-profile-cancel {
+  min-height: 44px;
+  margin: 24px auto 0;
+  padding: 0 18px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  display: block;
+  font-size: 14px;
+}
+
+html[data-theme="dark"] .auth81-profile-picker {
+  --surface: #181b20;
+}
+
+@media (max-width: 720px) {
+  .auth81-profile-picker {
+    width: 100%;
+    padding: max(20px, env(safe-area-inset-top)) 10px
+      max(24px, env(safe-area-inset-bottom));
+  }
+
+  .auth81-profile-copy {
+    margin: 42px 0 20px;
+  }
+
+  .auth81-profile-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .auth81-profile {
+    min-height: 92px;
+    grid-template-columns: 58px 1fr auto;
+    grid-template-rows: 1fr;
+    align-items: center;
+    gap: 14px;
+    padding: 14px;
+  }
+
+  .auth81-profile-avatar {
+    width: 58px;
+    height: 58px;
+    font-size: 20px;
+  }
+
+  .auth81-profile > span:nth-child(2),
+  .auth81-profile i {
+    align-self: center;
+  }
+}

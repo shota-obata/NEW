@@ -6,6 +6,7 @@
   const THEME_KEY = "growthOS.ui.theme.v77";
   const ACCOUNTS_KEY = "growthOS.auth.accounts.v77";
   const SESSION_KEY = "growthOS.auth.session.v77";
+  const PROFILE_KEY = "growthOS.auth.profile.v81";
   const AUTH_VERSION = 1;
   const ROLE_LABELS = {
     staff: "Staff",
@@ -16,6 +17,7 @@
   const html = document.documentElement;
   let gateMode = "login";
   let currentAccount = null;
+  let profilePickerAccount = null;
   let applyingAccount = false;
   let chromeRefreshQueued = false;
 
@@ -100,11 +102,56 @@
     ].filter(member => member?.status === "active");
   }
 
+  function effectiveRole(account) {
+    return account?.viewRole || account?.role || "";
+  }
+
+  function effectiveMemberId(account) {
+    return account?.viewMemberId || account?.memberId || "";
+  }
+
   function memberFor(account) {
     if (!account) return null;
     return allMembers().find(member => (
-      member.id === account.memberId && member.role === account.role
+      member.id === effectiveMemberId(account) && member.role === effectiveRole(account)
     )) || null;
+  }
+
+  function profileCandidates(account) {
+    if (!account) return [];
+    if (!cloudMode() || account.role !== "management") {
+      const member = allMembers().find(item =>
+        item.role === account.role && item.id === account.memberId
+      );
+      return member ? [{ role: member.role, memberId: member.id, member }] : [];
+    }
+    return allMembers()
+      .filter(member => member.role !== "management" || member.id === account.memberId)
+      .map(member => ({ role: member.role, memberId: member.id, member }));
+  }
+
+  function storedProfile(account) {
+    const saved = readJson(PROFILE_KEY, null);
+    if (!saved || saved.accountId !== account?.id) return null;
+    return profileCandidates(account).find(profile =>
+      profile.role === saved.role && profile.memberId === saved.memberId
+    ) || null;
+  }
+
+  function saveProfile(account) {
+    if (!account?.id) return;
+    writeJson(PROFILE_KEY, {
+      accountId: account.id,
+      role: effectiveRole(account),
+      memberId: effectiveMemberId(account)
+    });
+  }
+
+  function accountWithProfile(account, role, memberId) {
+    return Object.assign({}, account, {
+      viewRole: role || account.role,
+      viewMemberId: memberId || account.memberId
+    });
   }
 
   function availableMembers() {
@@ -203,12 +250,12 @@
   function gateMarkup() {
     return `
       <div class="auth77-gate" id="auth77Gate">
-        <div class="auth77-shell">
+        <div class="auth77-shell" id="auth77Shell">
           <section class="auth77-story">
             <div>
               <div class="auth77-logo"><span>Growth</span></div>
             </div>
-            <small class="lead">Growth OS v7.9</small>
+            <small class="lead">Growth OS v8.1</small>
           </section>
           <section class="auth77-formpanel">
             <div class="auth77-formwrap">
@@ -266,6 +313,59 @@
     }
     bindPinInputs(document.getElementById("auth77Gate"));
     renderGateMode(accounts().length ? "login" : "setup");
+  }
+
+  function profilePickerMarkup(account) {
+    const profiles = profileCandidates(account);
+    return `
+      <section class="auth81-profile-picker" id="auth81ProfilePicker">
+        <header>
+          <div class="auth77-logo"><span>Growth</span></div>
+          <div class="auth77-theme-switch" aria-label="表示テーマ">
+            <button type="button" data-auth77-theme="light">☀ ライト</button>
+            <button type="button" data-auth77-theme="dark">☾ ダーク</button>
+          </div>
+        </header>
+        <div class="auth81-profile-copy">
+          <h2>表示するOSを選択</h2>
+          <p>同じアカウントで、役割ごとに必要な判断とデータだけを表示します。</p>
+        </div>
+        <div class="auth81-profile-grid">
+          ${profiles.map(profile => `
+            <button type="button" class="auth81-profile"
+              data-auth81-role="${safeAttribute(profile.role)}"
+              data-auth81-member-id="${safeAttribute(profile.memberId)}">
+              ${avatarMarkup(profile.member, "auth81-profile-avatar")}
+              <span><b>${safe(profile.member.name)}</b><small>${safe(ROLE_LABELS[profile.role])}</small></span>
+              <i>›</i>
+            </button>
+          `).join("")}
+        </div>
+        ${currentAccount
+          ? `<button type="button" class="auth81-profile-cancel" data-auth81-action="close-profile">現在の画面へ戻る</button>`
+          : ""}
+      </section>
+    `;
+  }
+
+  function showProfilePicker(account) {
+    ensureGate();
+    profilePickerAccount = account;
+    setAppLocked(true);
+    document.getElementById("auth77Shell")?.classList.add("hidden");
+    document.getElementById("auth81ProfilePicker")?.remove();
+    document.getElementById("auth77Gate")?.insertAdjacentHTML(
+      "beforeend",
+      profilePickerMarkup(account)
+    );
+    applyTheme(readTheme(), false);
+  }
+
+  function closeProfilePicker() {
+    document.getElementById("auth81ProfilePicker")?.remove();
+    document.getElementById("auth77Shell")?.classList.remove("hidden");
+    profilePickerAccount = null;
+    if (currentAccount) setAppLocked(false);
   }
 
   function bindPinInputs(root) {
@@ -367,7 +467,11 @@
       const result = await window.GrowthCloud.login(loginId, pin);
       if (!result?.account) throw new Error("クラウド認証の結果を確認できませんでした。");
       clearSession();
-      await activate(result.account);
+      if (profileCandidates(result.account).length > 1) {
+        showProfilePicker(result.account);
+      } else {
+        await activate(result.account);
+      }
       return;
     }
     const account = accounts().find(item => normalizeLoginId(item.loginId) === loginId);
@@ -384,10 +488,15 @@
     const member = memberFor(account);
     if (!member) throw new Error("このアカウントに対応する人物が見つかりません。");
     applyingAccount = true;
-    const context = window.GrowthTeam?.activateAccount?.(account.role, account.memberId);
+    const context = window.GrowthTeam?.activateAccount?.(
+      effectiveRole(account),
+      effectiveMemberId(account)
+    );
     applyingAccount = false;
     if (!context) throw new Error("このアカウントのGrowth OSを開けませんでした。");
     currentAccount = account;
+    saveProfile(account);
+    closeProfilePicker();
     setAppLocked(false);
     ensureAccountChrome();
     queueChromeRefresh();
@@ -397,19 +506,21 @@
   }
 
   function accountButtonMarkup(account, member) {
+    const role = effectiveRole(account);
+    const hasProfiles = profileCandidates(account).length > 1;
     return `
       <button class="auth77-account-button" id="auth77AccountButton" type="button" aria-haspopup="menu" aria-expanded="false">
         ${avatarMarkup(member)}
         <span class="auth77-account-copy">
           <b>${safe(member.name)}</b>
-          <small>${safe(ROLE_LABELS[account.role])}</small>
+          <small>${safe(ROLE_LABELS[role])}</small>
         </span>
         <span class="auth77-chevron">⌄</span>
       </button>
       <div class="auth77-menu" id="auth77Menu" role="menu" hidden>
         <div class="auth77-menu-head">
           ${avatarMarkup(member)}
-          <span><b>${safe(member.name)}</b><small>${safe(account.loginId)} · ${safe(ROLE_LABELS[account.role])}</small></span>
+          <span><b>${safe(member.name)}</b><small>${safe(account.loginId)} · ${safe(ROLE_LABELS[role])}</small></span>
         </div>
         <div class="auth77-menu-row">
           <span>表示テーマ</span>
@@ -418,6 +529,7 @@
             <button type="button" data-auth77-theme="dark">☾ ダーク</button>
           </div>
         </div>
+        ${hasProfiles ? `<button class="auth77-menu-action" type="button" data-auth77-action="switch-profile">表示する役割を変更</button>` : ""}
         <button class="auth77-menu-action" type="button" data-auth77-action="change-pin">PINを変更</button>
         <button class="auth77-menu-action logout" type="button" data-auth77-action="logout">ログアウト</button>
       </div>
@@ -436,7 +548,7 @@
       root.className = "auth77-account";
       top.appendChild(root);
     }
-    const identityKey = `${currentAccount.id}:${member.updatedAt || ""}`;
+    const identityKey = `${currentAccount.id}:${effectiveRole(currentAccount)}:${effectiveMemberId(currentAccount)}:${member.updatedAt || ""}`;
     if (root.dataset.identity !== identityKey) {
       root.dataset.identity = identityKey;
       root.innerHTML = accountButtonMarkup(currentAccount, member);
@@ -447,21 +559,23 @@
 
   function enforceAccountContext() {
     if (!currentAccount) return;
-    document.body.dataset.accountRole = currentAccount.role;
+    const role = effectiveRole(currentAccount);
+    const memberId = effectiveMemberId(currentAccount);
+    document.body.dataset.accountRole = role;
     document.body.dataset.accountId = currentAccount.id;
     document.querySelectorAll(".role[data-role]").forEach(button => {
-      const allowed = button.dataset.role === currentAccount.role;
+      const allowed = button.dataset.role === role;
       button.disabled = !allowed;
       button.setAttribute("aria-hidden", String(!allowed));
     });
     const actorSelect = document.getElementById("v7ActorSelect");
     if (actorSelect) {
-      actorSelect.value = currentAccount.memberId;
+      actorSelect.value = memberId;
       actorSelect.disabled = true;
       actorSelect.setAttribute("aria-label", "ログイン中の人物");
     }
     const personBar = document.querySelector(".v7-personbar");
-    personBar?.classList.toggle("auth77-staff", currentAccount.role === "staff");
+    personBar?.classList.toggle("auth77-staff", role === "staff");
   }
 
   function queueChromeRefresh() {
@@ -558,6 +672,9 @@
     }
     clearSession();
     currentAccount = null;
+    profilePickerAccount = null;
+    document.getElementById("auth81ProfilePicker")?.remove();
+    document.getElementById("auth77Shell")?.classList.remove("hidden");
     document.getElementById("auth77Account")?.remove();
     setAppLocked(true);
     renderGateMode("login");
@@ -567,16 +684,16 @@
   function handleRoleCapture(event) {
     if (!currentAccount || applyingAccount) return;
     const roleButton = event.target.closest?.(".role[data-role]");
-    if (roleButton && roleButton.dataset.role !== currentAccount.role) {
+    if (roleButton && roleButton.dataset.role !== effectiveRole(currentAccount)) {
       event.preventDefault();
       event.stopImmediatePropagation();
       return;
     }
     const actorSelect = event.target.closest?.("#v7ActorSelect");
-    if (actorSelect && actorSelect.value !== currentAccount.memberId) {
+    if (actorSelect && actorSelect.value !== effectiveMemberId(currentAccount)) {
       event.preventDefault();
       event.stopImmediatePropagation();
-      actorSelect.value = currentAccount.memberId;
+      actorSelect.value = effectiveMemberId(currentAccount);
     }
   }
 
@@ -605,7 +722,27 @@
       toggleAccountMenu(false);
       openPinDialog();
     }
+    if (action === "switch-profile") {
+      toggleAccountMenu(false);
+      showProfilePicker(currentAccount);
+    }
     if (action === "close-pin") closePinDialog();
+    const profileButton = event.target.closest("[data-auth81-role]");
+    if (profileButton && profilePickerAccount) {
+      const selected = accountWithProfile(
+        profilePickerAccount,
+        profileButton.dataset.auth81Role,
+        profileButton.dataset.auth81MemberId
+      );
+      activate(selected).catch(error => {
+        setGateMessage(error?.message || "この役割を開けませんでした。");
+      });
+      return;
+    }
+    if (event.target.closest('[data-auth81-action="close-profile"]')) {
+      closeProfilePicker();
+      return;
+    }
     if (!event.target.closest("#auth77Account") && !event.target.closest("#auth77PinDialog")) {
       toggleAccountMenu(false);
     }
@@ -656,7 +793,18 @@
         await window.GrowthCloud.ready;
         const restored = await window.GrowthCloud.restore();
         if (restored?.account) {
-          await activate(restored.account);
+          const saved = storedProfile(restored.account);
+          if (saved) {
+            await activate(accountWithProfile(
+              restored.account,
+              saved.role,
+              saved.memberId
+            ));
+          } else if (profileCandidates(restored.account).length > 1) {
+            showProfilePicker(restored.account);
+          } else {
+            await activate(restored.account);
+          }
         } else {
           renderGateMode("login");
         }

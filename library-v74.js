@@ -4,6 +4,8 @@
   window.__growthLibraryV74 = true;
 
   const Core = window.GrowthTeamCore;
+  const MAX_IMAGES = 8;
+  const TARGET_IMAGE_BYTES = 70 * 1024;
   const commit = () => window.GrowthTeam?.commitState
     ? window.GrowthTeam.commitState()
     : save();
@@ -146,7 +148,9 @@
           <h1>変化を並べて、判断を資産にする。</h1>
           <p class="lead">一つのモデルをBefore / After、希望 / 仕上がり、過去 / 現在で比較し、次回使える判断へ変換します。</p>
         </div>
-        ${editor ? `<button class="btn primary" data-v74-action="new-asset">＋ 比較資産を追加</button>` : ""}
+        ${editor
+          ? `<button class="btn primary" data-v74-action="new-asset">＋ 比較資産を追加</button>`
+          : `<button class="btn secondary" type="button" data-auth77-action="switch-profile">Staff / Support表示で編集</button>`}
       </header>
 
       <section class="v74-library-summary">
@@ -230,7 +234,7 @@
                 </div>
               </section>
               <section class="v74-editor-section">
-                <div class="v74-editor-title"><span>02</span><div><b>比較画像</b><small>2枚以上・最大12枚</small></div><button class="btn primary small" data-v74-action="choose-images">＋ 画像を追加</button></div>
+                <div class="v74-editor-title"><span>02</span><div><b>比較画像</b><small>選択・貼り付け・ドロップに対応（最大${MAX_IMAGES}枚）</small></div><button type="button" class="btn primary small" data-v74-action="choose-images">＋ 画像を追加</button></div>
                 <input id="v74ImageInput" type="file" accept="image/*" multiple class="hidden">
                 <div id="v74DraftImages" class="v74-draft-images"></div>
               </section>
@@ -298,8 +302,8 @@
         </div>
       </article>
     `).join("") : `
-      <button class="v74-image-drop" data-v74-action="choose-images">
-        <span>＋</span><b>画像を2枚以上追加</b><small>一度に複数選択できます</small>
+      <button type="button" class="v74-image-drop" data-v74-action="choose-images">
+        <span>＋</span><b>画像を追加</b><small>タップして選択／コピーした画像を貼り付け／ここへドロップ</small>
       </button>
     `;
     const guide = draftImages.length >= 2
@@ -374,6 +378,8 @@
     renderDraftImages();
     setReadOnly(!canEdit());
     document.getElementById("v74AssetModal").classList.remove("hidden");
+    const modalBox = document.querySelector("#v74AssetModal .v74-asset-modal");
+    if (modalBox) modalBox.scrollTop = 0;
     if (focusImages && canEdit()) setTimeout(() => document.getElementById("v74ImageInput")?.click(), 120);
   }
 
@@ -403,14 +409,27 @@
         const image = new Image();
         image.onerror = reject;
         image.onload = () => {
-          const max = 1200;
+          const max = 960;
           const scale = Math.min(1, max / Math.max(image.width, image.height));
           const canvas = document.createElement("canvas");
           canvas.width = Math.max(1, Math.round(image.width * scale));
           canvas.height = Math.max(1, Math.round(image.height * scale));
-          const context2d = canvas.getContext("2d");
-          context2d.drawImage(image, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL("image/jpeg", .76));
+          let encoded = "";
+          for (let shrink = 0; shrink < 4; shrink += 1) {
+            const context2d = canvas.getContext("2d");
+            context2d.clearRect(0, 0, canvas.width, canvas.height);
+            context2d.drawImage(image, 0, 0, canvas.width, canvas.height);
+            let quality = .72;
+            encoded = canvas.toDataURL("image/jpeg", quality);
+            while (Math.ceil(encoded.length * .75) > TARGET_IMAGE_BYTES && quality > .42) {
+              quality = Math.max(.42, quality - .08);
+              encoded = canvas.toDataURL("image/jpeg", quality);
+            }
+            if (Math.ceil(encoded.length * .75) <= TARGET_IMAGE_BYTES || canvas.width <= 520) break;
+            canvas.width = Math.max(1, Math.round(canvas.width * .8));
+            canvas.height = Math.max(1, Math.round(canvas.height * .8));
+          }
+          resolve(encoded);
         };
         image.src = reader.result;
       };
@@ -419,9 +438,10 @@
   }
 
   async function addImages(files) {
-    const available = Math.max(0, 12 - draftImages.length);
+    const available = Math.max(0, MAX_IMAGES - draftImages.length);
     const selected = [...files].filter(file => file.type.startsWith("image/")).slice(0, available);
-    if (!selected.length) return;
+    if (!available) return alert(`画像は最大${MAX_IMAGES}枚まで追加できます。`);
+    if (!selected.length) return alert("画像ファイルを選択してください。");
     const actor = context();
     const mode = document.getElementById("v74Mode")?.value || "before-after";
     const button = document.querySelector("[data-v74-action='choose-images']");
@@ -447,7 +467,8 @@
       alert("画像を読み込めませんでした。別の画像を選択してください。");
     } finally {
       if (button) button.textContent = "＋ 画像を追加";
-      document.getElementById("v74ImageInput").value = "";
+      const input = document.getElementById("v74ImageInput");
+      if (input) input.value = "";
     }
   }
 
@@ -600,6 +621,39 @@
         document.getElementById("v74ModelName").value = model.name || "";
       }
     }
+  });
+
+  document.addEventListener("paste", event => {
+    const modal = document.getElementById("v74AssetModal");
+    if (!modal || modal.classList.contains("hidden") || !canEdit()) return;
+    const files = [...(event.clipboardData?.items || [])]
+      .filter(item => item.kind === "file" && item.type.startsWith("image/"))
+      .map(item => item.getAsFile())
+      .filter(Boolean);
+    if (!files.length) return;
+    event.preventDefault();
+    addImages(files);
+  });
+
+  document.addEventListener("dragover", event => {
+    const drop = event.target.closest?.(".v74-image-drop, #v74DraftImages");
+    if (!drop || !canEdit()) return;
+    event.preventDefault();
+    document.getElementById("v74DraftImages")?.classList.add("is-dragging");
+  });
+
+  document.addEventListener("dragleave", event => {
+    if (!event.target.closest?.(".v74-image-drop, #v74DraftImages")) return;
+    document.getElementById("v74DraftImages")?.classList.remove("is-dragging");
+  });
+
+  document.addEventListener("drop", event => {
+    const drop = event.target.closest?.(".v74-image-drop, #v74DraftImages");
+    if (!drop || !canEdit()) return;
+    event.preventDefault();
+    const root = document.getElementById("v74DraftImages");
+    root?.classList.remove("is-dragging");
+    addImages(event.dataTransfer?.files || []);
   });
 
   document.addEventListener("click", event => {

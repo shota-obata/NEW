@@ -1,5 +1,5 @@
 (() => {
-  window.GROWTH_VERSION = "8.0";
+  window.GROWTH_VERSION = "8.1";
   const versionLabel = `v${window.GROWTH_VERSION}`;
   document.title = `Growth OS ${versionLabel}`;
   const version = document.querySelector(".brand small");
