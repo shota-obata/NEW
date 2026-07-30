@@ -730,6 +730,7 @@
     const common = state.role === "staff"
       ? [
         ["home", "Home"],
+        ["vision", "Vision"],
         ["journey", "Journey"],
         ["issue", "Issue A"],
         ["practice", "Practice"],
@@ -740,6 +741,7 @@
       : state.role === "support"
         ? [
           ["support", "Support Home"],
+          ["vision", "Vision"],
           ["journey", "Journey"],
           ["issue", "Issue A"],
           ["practice", "Practice"],
