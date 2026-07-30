@@ -151,7 +151,9 @@
           <div class="v72-value-row">
             ${profile.values.length
               ? profile.values.map(value => `<i>${safeText(value)}</i>`).join("")
-              : "<i>価値観を追加</i>"}
+              : `<button type="button" class="v72-value-add" data-v72-action="edit-vision">
+                  <span>＋</span>価値観を追加
+                </button>`}
           </div>
         </div>
         <div class="v72-vision-time">
