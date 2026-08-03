@@ -148,6 +148,25 @@ create policy p03_subject_or_mgmt on mgmt_consultations for select
 
 Supportにはポリシーが1つも一致しないので、行は返りません（RLSの既定は拒否）。
 
+### ⚠ ポリシーの中で、別のテーブルを生で参照しない
+
+ポリシーAがテーブルBを参照し、Bのポリシーがまたテーブルaを参照すると、
+**`42P17 infinite recursion detected in policy`** で落ちます。実際に
+`personal_notes` ↔ `personal_note_shares` で踏みました。
+
+原則は2つです。
+
+1. **判定は `security definer` 関数を経由する。** `supports()` / `is_mgmt_of()` /
+   `has_role_in()` は所有者（`postgres`）の権限で動くので、関数の中では RLS が
+   効かず、そこで連鎖が止まります。ポリシーに生の `select ... from 他テーブル`
+   を書くと、この止め木がありません。
+2. **相互参照が避けられないときは、参照の向きを1本消す。** 片側に判定用の列を
+   持たせます（`personal_note_shares.owner_id`）。非正規化ですが、RLSを非循環に
+   保つための正攻法です。値はトリガーで必ず一致させ、クライアントに詐称させません。
+
+参照の閉路は機械的に洗い出せます。ポリシー本文の `from <table>` を辺として
+グラフにし、閉路を探してください。**追加のたびに確認すること。**
+
 ### ⚠ ポリシーに使ってはいけない列
 
 | 列 | 理由 |
