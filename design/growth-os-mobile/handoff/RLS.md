@@ -148,6 +148,23 @@ create policy p03_subject_or_mgmt on mgmt_consultations for select
 
 Supportにはポリシーが1つも一致しないので、行は返りません（RLSの既定は拒否）。
 
+### ⚠ ポリシーに使ってはいけない列
+
+| 列 | 理由 |
+| --- | --- |
+| `practice_records.instructed_by` | 実務上そのレッスンを見た人の**記録**であって権限ではない。Management がレッスンに入っても、その Staff の Journey や Capability Map の閲覧権限は増えない。**可視領域は `assignments` のみで決まる** |
+| `users.birth_date` | 他者には年齢（`show_age` が true のときだけ）を返す。生年月日そのものは、どちらのビューにも**列ごと入れない**（マスクではなく非収録） |
+| `users.experience_started_on` | **スタッフ間には見せない**（比較が始まるため）。本人・担当Support・Management のみ。ポリシーで絞るのではなく、**列を持たない `v_user_public` を別に用意**して分ける |
+
+ビューは2つです。
+
+| ビュー | 見える人 | 含む列 |
+| --- | --- | --- |
+| `v_user_public` | 同一店舗のスタッフ間まで | 氏名、個人ID、年齢（`show_age` が true のときだけ）|
+| `v_user_profile` | 本人・担当Support・Management | 上記 ＋ 経験開始日・経験年数 |
+
+`instructed_by` を条件に足すと、可視領域の決まり方が2系統になり、権限表と実装が一致しなくなります。**足さないこと。**
+
 ### 04 育成設計
 
 ```sql

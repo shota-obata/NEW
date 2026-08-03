@@ -3,3 +3,13 @@ functions/node_modules/
 firebase-debug.log
 firebase-debug.*.log
 .runtimeconfig.json
+
+# 環境変数（Supabase / Cloudflare）。キーは絶対にコミットしない
+.env
+.env.*
+!.env.example
+.dev.vars
+
+# Supabase CLI
+supabase/.temp/
+supabase/.branches/

@@ -14,9 +14,12 @@ stores
 
 users
   id            uuid pk
-  person_code   text unique      -- 画面上の「個人ID」例 KS-0184
+  person_code   text unique      -- 画面上の「個人ID」。会社が発番。本人には決めさせない
   display_name  text
   retired_at    timestamptz null -- 退職日。null=在籍
+  birth_date            date null -- 本人のみ編集可。生の値は他者に返さない
+  experience_started_on date null -- 美容師としての経験開始日（入社日ではない）
+  show_age              bool      -- 年齢を他者に見せるか。既定 false
 
 user_roles                       -- 1人が複数役割を持てる（制約あり）
   id            uuid pk
@@ -66,10 +69,12 @@ credentials
 | 四条烏丸店 | `SK-002` | 1 | 1 | 2 | 4名 |
 | **全社** | | **2** | **3** | **4** | **9名** |
 
+**役割の行数は10、人数は9です。** 小畑（`KW-02`）が Support と Staff を兼ねるため、`user_roles` は10行になります。**同意の分母は `users` の実人数（9）** で、役割の数ではありません。宛先の表示も「全社9名」を使い、役割ごとの合計は出しません（兼務が二重に数えられるため）。
+
 - **両店とも常時10人未満**のため、就業規則の労基署への届出は不要（書面の交付により周知）。
 - 営業時間は両店とも同じ（下記「営業時間（AI,re 確定値）」）。
 - **人数は `users` の実人数で数えます。** SupportはStaffを兼ねられるので `user_roles` は9行より多くなりますが、**同意の分母は9**です。ManagementはStaffを兼ねられないので2名のまま（`check_role_combo()`）。
-- 全体通達の宛先表示は「全社9名」または「Staff 4 ＋ Support 3 ＋ Management 2」。**「Staff 9名」のような役割単位の合計は使いません**（兼務で二重に数えるため）。
+- 全体通達の宛先表示は **「全社9名」**（必要なら「全社9名（2店舗）」）。**役割単位の合計は使いません** — 小畑さんの兼務で Staff が4名にも5名にも見え、二重に数えることになるためです。
 
 **認証の順序**：`devices` の照合 → `user_roles` の確認 → PINの照合 → **最新版の規定への同意**の確認。他店舗にサインインしたときは `store_access_log` への記録が成功してからセッションを張り、その店舗IDをセッション変数（`app.store_id`）に入れます。**`membership='visiting'` のセッションでは、育成設計と軸定義に書き込めません**（読みは可。`RLS.md` `can_write_in()`）。未登録・失効済みの端末ではセッションを発行せず、PINの入力欄も出しません（画面 `12a`）。試行は端末単位でも記録します（未登録端末からの試行も `audit_log` に残る）。
 
@@ -165,12 +170,18 @@ practice_records
   next_gain     text             -- 次回への経験値の貯め方
   shared_at     timestamptz null -- Support/Mapへの共有時刻
   salon_shared  bool             -- サロン（スタッフ間）に出すか
+  images_pending bool default false -- ストレージ上限で画像だけ保存できなかった
+  instructed_by uuid null fk users -- 実務上そのレッスンを見た人（Managementが入ることがある）
+  -- ⚠ instructed_by は「誰が見たか」の記録であって権限ではない。
+  --    可視領域は assignments のみで決まる。RLSの条件に使ってはならない。
   anonymized    bool             -- 退職時に true → 表示名は Other
   deleted_at    timestamptz null
 
 practice_images
   id, record_id, kind text ('before'|'after'), storage_path, sort_order
   -- kindごとに最大5枚。アプリ側とDB側の両方で制限する
+  -- 保存前に長辺1600px / JPEG品質80へ再圧縮（必須）。EXIF は再エンコードで落とす
+  -- バケット側でも file_size_limit 1.5MB をかける（`STORAGE.md`）
 
 record_views                     -- 既読（誰が・いつ）
   id, record_id, viewer_id, viewed_at
@@ -205,7 +216,7 @@ notices                          -- 通達3系統
 inbox_items                      -- 受信ボックス（全件保存）
   id            uuid pk
   user_id       uuid fk users
-  source_kind   text             -- 'notice' | 'os_suggestion' | 'nudge' | 'agreement_request' | 'policy_update'
+  source_kind   text             -- 'notice' | 'os_suggestion' | 'nudge' | 'agreement_request' | 'policy_update' | 'storage_alert'
   source_id     uuid
   read_at       timestamptz null
   deleted_at    timestamptz null -- 消去（任意）
@@ -267,6 +278,15 @@ capability_params
 
 capability_values                -- 月次スナップショット＋現在値
   id, staff_id, param_id, value int (0-100), status text, snapshot_month date
+  source     text                -- 'computed' | 'initial_estimate'
+  entered_by uuid null fk users  -- 初期値を入れた人（Management / Support）
+  entered_at timestamptz null
+  basis      text null           -- 初期値の根拠。10字以上必須
+```
+
+**導入時の初期値**：年の途中から始めるため、既に経験のあるスタッフを0から始めません。Management と Support が初期値を入れられます（**本人は入力できません**）。`source = 'initial_estimate'` と入力者・入力日・根拠を必ず残し、本人の画面では自動算出と区別して「導入時の初期値です」と出します。**初期値のまま3か月動かない項目は「未検証」**として扱います（保存せず `v_capability_current.effective_status` で導出）。
+
+```
 
 capability_param_changes         -- 名称・ソース変更の監査
   id, param_id, changed_by, before jsonb, after jsonb, changed_at
@@ -301,6 +321,19 @@ sincerity_from_response = clamp(0, 70, round(70 * (1.0 / max(avg_days, 0.25)) / 
 ```
 
 残り30%は `support_input`（Supportの入力）から。速さだけで満点にならないことをUIにも明記済み。
+
+## ストレージ
+
+```
+storage_usage                    -- 日次スナップショット（推定ではなく実測）
+  id, measured_on date unique, bucket text,
+  bytes_used bigint, object_count int, quota_bytes bigint
+
+storage_alerts                   -- 段階が上がったときだけ1件
+  id, level text ('notice'|'warn'|'danger'), pct numeric, days_left int, created_at
+```
+
+画像は**消せません**（第8条で退職後も残す）。監視の目的は掃除ではなく、**有料枠へ移る判断を余裕をもって出すこと**です。率だけでなく直近28日の増加ペースから**枯渇予測日**を出し、両方でしきい値を判定します。詳細は **`STORAGE.md`**。
 
 ## 監査ログ
 
