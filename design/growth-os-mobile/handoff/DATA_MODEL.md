@@ -105,6 +105,24 @@ end $$ language plpgsql;
 
 Support ＋ Staff の併用のみ許可。Supportは店舗IDを知っていれば複数店舗の `user_roles` を持てる（他店舗ログインは `store_access_log` に記録）。
 
+## パーソナルスペース（区分01）
+
+```
+personal_notes
+  id, user_id fk users
+  visibility text            -- 'surface'（表） | 'private'（裏）
+  body       text
+
+personal_note_shares         -- 開示先。「表」だけが持てる
+  id, note_id fk, shared_with fk users, shared_at
+  unique (note_id, shared_with)
+```
+
+- **「裏」に開示先を作れないことはトリガーで担保**します。画面に開示ボタンを置かないだけでは、APIを直接叩けば作れてしまうためです。
+- 「表」→「裏」に変えたとき、既存の開示先を**必ず消します**（残っていると、裏にしたのに見えている人がいる状態になる）。
+- **共有端末では `private` の行を返しません**。サインイン時に `devices.device_kind` をセッション変数へ入れ、`current_device_kind()` で判定します（`app.store_id` と同じ仕組み）。
+- Support・Management には**存在も件数も返しません**。
+
 ## 担当関係
 
 ```
