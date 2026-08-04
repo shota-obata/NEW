@@ -1,0 +1,19 @@
+{
+  // Cloudflare Workers（静的アセット）として配信する設定。
+  // これが無いと Worker は「何を返せばいいか」を知らず
+  // 「There is nothing here yet」のままになる。
+  //
+  // ダッシュボード側の設定（Settings → Build）:
+  //   Root directory   app
+  //   Build command    npm run build
+  //   Deploy command   npx wrangler deploy
+  "name": "ai-re-growth",
+  "compatibility_date": "2026-08-01",
+
+  "assets": {
+    "directory": "./dist",
+    // 画面遷移は React が持つのでサーバ側のルートは無い。
+    // どのパスでも index.html を返す（SPA）
+    "not_found_handling": "single-page-application"
+  }
+}
