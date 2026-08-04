@@ -16,3 +16,7 @@ supabase/.branches/
 
 # 仮PIN（手渡し用。コミット厳禁）
 temp-pins.txt
+
+# アプリのビルド成果物と依存
+app/node_modules/
+app/dist/
