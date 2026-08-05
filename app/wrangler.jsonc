@@ -13,7 +13,11 @@
   "assets": {
     "directory": "./dist",
     // 画面遷移は React が持つのでサーバ側のルートは無い。
-    // どのパスでも index.html を返す（SPA）
+    // どのパスでも index.html を返す（SPA）。
+    //
+    // ⚠ これと同じことを public/_redirects の `/* /index.html 200` で
+    //    書いてはいけない。Workers はそれを自己ループと判定して
+    //    デプロイを拒否する（code 100324）。SPA の面倒はここだけで見る。
     "not_found_handling": "single-page-application"
   }
 }
