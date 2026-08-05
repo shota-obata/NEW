@@ -11,7 +11,11 @@ export const admin = () =>
 
 export const cors = {
   'Access-Control-Allow-Origin': Deno.env.get('APP_ORIGIN') ?? '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type',
+  // supabase-js は apikey / x-client-info も送る。ここに挙げないと
+  // ブラウザはプリフライトで止め、fetch が例外になる（画面が固まる）
+  'Access-Control-Allow-Headers':
+    'authorization, content-type, apikey, x-client-info, x-supabase-api-version',
+  'Access-Control-Max-Age': '86400',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 

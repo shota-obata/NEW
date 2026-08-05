@@ -29,21 +29,27 @@ export function fingerprint(): string {
 }
 
 // ---- Edge Function ---------------------------------------------------
+// 通信そのものが失敗しても必ず返す。throw させると呼び出し側の
+// setBusy(false) に到達せず、画面が「…しています」のまま固まる
 const fn = async (name: string, body: unknown, token?: string) => {
-  const res = await fetch(`${URL}/functions/v1/${name}`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      apikey: ANON,
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  return { status: res.status, body: await res.json().catch(() => ({})) };
+  try {
+    const res = await fetch(`${URL}/functions/v1/${name}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        apikey: ANON,
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, body: await res.json().catch(() => ({})) };
+  } catch {
+    return { status: 0, body: { ok: false, reason: 'network' } };
+  }
 };
 
 export type Next = 'change_pin' | 'consent' | 'ok';
-export type Deny = 'denied' | 'locked' | 'device_limit' | 'weak_pin' | 'format' | 'same_pin';
+export type Deny = 'denied' | 'locked' | 'device_limit' | 'weak_pin' | 'format' | 'same_pin' | 'network';
 
 export async function login(a: {
   person_code: string; store_code: string; pin: string; mgmt_code?: string;
