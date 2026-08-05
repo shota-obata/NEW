@@ -7,17 +7,19 @@ import { useEffect, useState } from 'react';
 import { Login, RegisterDevice, ChangePin, hasDevice } from './screens/Auth';
 import { Consent, PolicyFull } from './screens/Policy';
 import { Home, Practice } from './screens/Staff';
+import { Settings } from './screens/Settings';
 import { myStore } from './lib/staff';
 import { Screen, Bar, P, Spacer } from './ui/kit';
 import { loginGate, session, signOut, me, type Next } from './lib/api';
 
 type View = 'boot' | 'register' | 'login' | 'change_pin' | 'consent' | 'policy'
-           | 'home' | 'practice';
+           | 'home' | 'practice' | 'settings';
 
 export function App() {
   const [view, setView] = useState<View>('boot');
   const [back, setBack] = useState<View>('login');
   const [name, setName] = useState<string | null>(null);
+  const [code, setCode] = useState<string | null>(null);
   const [storeId, setStoreId] = useState<string | null>(null);
   const [recId, setRecId] = useState<string | null>(null);
 
@@ -29,7 +31,11 @@ export function App() {
       if (!s) return setView('login');
       const g = await loginGate();
       setView(g === 'ok' ? 'home' : (g as View));
-      me().then((u) => u && setName((u as { display_name: string }).display_name));
+      me().then((u) => {
+        if (!u) return;
+        const x = u as { display_name: string; person_code: string };
+        setName(x.display_name); setCode(x.person_code);
+      });
       myStore().then((st) => st && setStoreId(st.id));
     })();
   }, []);
@@ -58,6 +64,13 @@ export function App() {
 
   if (view === 'policy') return <PolicyFull onBack={() => setView(back)} />;
 
+  if (view === 'settings') return (
+    <Settings name={name} personCode={code}
+      onPolicy={() => { setBack('settings'); setView('policy'); }}
+      onSignOut={async () => { await signOut(); setView('login'); }}
+      onBack={() => setView('home')} />
+  );
+
   if (view === 'practice') return (
     <Practice id={recId} storeId={storeId} onBack={() => { setRecId(null); setView('home'); }} />
   );
@@ -67,8 +80,7 @@ export function App() {
       name={name}
       onOpen={(id) => { setRecId(id); setView('practice'); }}
       onNew={() => { setRecId(null); setView('practice'); }}
-      onPolicy={() => { setBack('home'); setView('policy'); }}
-      onSignOut={async () => { await signOut(); setView('login'); }}
+      onSettings={() => setView('settings')}
     />
   );
 }
