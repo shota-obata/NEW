@@ -11,6 +11,7 @@ import { getProfile, saveProfile, yearsSince, type Profile } from '../lib/staff'
 export function Settings(p: {
   name: string | null; personCode: string | null;
   onPolicy: () => void; onSignOut: () => void; onBack: () => void;
+  onDevices?: () => void;
 }) {
   const [pf, setPf] = useState<Profile | null>(null);
   const [saved, setSaved] = useState(false);
@@ -106,6 +107,19 @@ export function Settings(p: {
       <div style={{ marginTop: 10, ...t.small, color: c.weaker }}>
         版が上がったときは、次にサインインしたときにお知らせします。
       </div>
+
+      {p.onDevices && (
+        <>
+          <Spacer />
+          <Kicker>運営</Kicker>
+          <div style={{ marginTop: 12 }}>
+            <Button variant="outline" onClick={p.onDevices}>端末とアカウントの管理</Button>
+          </div>
+          <div style={{ marginTop: 10, ...t.small, color: c.weaker }}>
+            登録コードの発行、仮PINの再発行、端末の失効、ロックの解除。
+          </div>
+        </>
+      )}
 
       {/* ---- サインアウト ---- */}
       <Spacer />
