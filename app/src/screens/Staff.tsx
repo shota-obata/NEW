@@ -20,7 +20,7 @@ const md = (s: string) => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
 // ============================================================
 
 export function Home(p: { name: string | null; onOpen: (id: string) => void; onNew: () => void;
-                          onPolicy: () => void; onSignOut: () => void }) {
+                          onSettings: () => void }) {
   const [recs, setRecs] = useState<Record_[] | null>(null);
   const [st, setSt] = useState<{ open: boolean; closedDay: boolean } | null>(null);
 
@@ -107,11 +107,11 @@ export function Home(p: { name: string | null; onOpen: (id: string) => void; onN
         </>
       )}
 
+      {/* 一度読めば済むもの・たまにしか使わないものは設定へ。
+          日常の画面に置くと、それ自体が判断になる（10c と同じ考え方） */}
       <Spacer />
-      <Button variant="outline" onClick={p.onPolicy}>就業規則 追加条文（全9条）を読む</Button>
-      <Spacer h={10} />
-      <Button variant="ghost" onClick={p.onSignOut}>サインアウト</Button>
-      <Spacer />
+      <Button variant="ghost" onClick={p.onSettings}>設定</Button>
+      <Spacer h={8} />
     </Screen>
   );
 }

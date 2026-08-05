@@ -43,6 +43,21 @@ export function RegisterDevice(p: { onDone: () => void }) {
         <b style={{ fontWeight: 700 }}>登録には、運営者から受け取る6桁のコードが要ります。</b>
         本人確認のうえ、仮のPINと一緒に手渡されます。コードは15分で失効し、1回しか使えません。
       </Warn>
+
+      {/* 登録はブラウザごとに残る。LINEやメールのリンクから開くと
+          アプリ内ブラウザになり、別の場所として扱われる。
+          ホーム画面に追加すれば、以後そこだけを使える */}
+      <Spacer h={14} />
+      <Card tone="flat">
+        <Kicker>登録し直しになったときは</Kicker>
+        <div style={{ marginTop: 10, ...t.small, color: c.weak, lineHeight: 1.9 }}>
+          この登録は<b style={{ fontWeight: 660, color: c.text }}>ブラウザごとに残ります</b>。
+          LINEやメールのリンクから開くと別のブラウザになり、もう一度登録が要ります。
+          <br /><br />
+          <b style={{ fontWeight: 660, color: c.text }}>共有ボタンから「ホーム画面に追加」しておくと、
+          次からはそこを開くだけで済みます。</b>
+        </div>
+      </Card>
     </Screen>
   );
 

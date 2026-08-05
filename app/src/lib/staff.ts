@@ -176,3 +176,32 @@ export async function inbox() {
     .is('deleted_at', null).order('created_at', { ascending: false }).limit(30);
   return data ?? [];
 }
+
+// ---- プロフィール（本人のみ編集可）------------------------------------
+// 用途は Capability Map の解釈の補助。比較や評価には使わない。
+// 生年月日そのものは他者に返らない（v_user_public に列ごと無い）。
+// 経験年数はスタッフ間に見せない（v_user_profile のみ）。
+
+export type Profile = {
+  birth_date: string | null;
+  experience_started_on: string | null;
+  show_age: boolean;
+};
+
+export async function getProfile(): Promise<Profile | null> {
+  const { data: u } = await sb.auth.getUser();
+  if (!u.user) return null;
+  const { data } = await sb.from('users')
+    .select('birth_date, experience_started_on, show_age').eq('id', u.user.id).maybeSingle();
+  return (data as Profile) ?? null;
+}
+
+export async function saveProfile(patch: Partial<Profile>) {
+  const { data: u } = await sb.auth.getUser();
+  if (!u.user) return false;
+  const { error } = await sb.from('users').update(patch).eq('id', u.user.id);
+  return !error;
+}
+
+export const yearsSince = (d: string | null) =>
+  d ? Math.floor((Date.now() - new Date(d).getTime()) / (365.25 * 864e5) * 10) / 10 : null;
