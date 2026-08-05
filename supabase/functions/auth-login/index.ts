@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
     p_mgmt_code: mgmt_code ?? null,
   });
   if (re || !r || r.length === 0) { await slow(); return json(DENY, 401); }
-  const { user_id, store_id, device_id } = r[0];
+  const { out_user_id: user_id, out_store_id: store_id, out_device_id: device_id } = r[0];
 
   // 2. PIN。5回失敗で15分ロック（DB側で数える）
   const { data: v, error: ve } = await db.rpc('verify_pin', {
