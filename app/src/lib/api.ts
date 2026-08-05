@@ -15,6 +15,13 @@ export const sb = createClient(URL, ANON, {
 // ---- 端末トークン ----------------------------------------------------
 // 登録時に受け取り、端末内にだけ置く。以後のサインインで毎回送る。
 const DEV_KEY = 'growthos.device_token';
+const ROLE_KEY = 'growthos.role';
+
+// サインインで選んだ役割。兼務（Support ＋ Staff）がいるので、
+// どちらとして入ったかは本人の選択で決める
+export type Role = 'staff' | 'support' | 'mgmt';
+export const chosenRole = () => (localStorage.getItem(ROLE_KEY) as Role | null) ?? 'staff';
+export const setChosenRole = (r: Role) => localStorage.setItem(ROLE_KEY, r);
 export const deviceToken = () => localStorage.getItem(DEV_KEY);
 export const setDeviceToken = (v: string) => localStorage.setItem(DEV_KEY, v);
 export const clearDeviceToken = () => localStorage.removeItem(DEV_KEY);
@@ -52,12 +59,13 @@ export type Next = 'change_pin' | 'consent' | 'ok';
 export type Deny = 'denied' | 'locked' | 'device_limit' | 'weak_pin' | 'format' | 'same_pin' | 'network';
 
 export async function login(a: {
-  person_code: string; store_code: string; pin: string; mgmt_code?: string;
+  person_code: string; store_code: string; pin: string; mgmt_code?: string; role: Role;
 }): Promise<{ ok: true; next: Next } | { ok: false; reason: Deny }> {
   const token = deviceToken();
   if (!token) return { ok: false, reason: 'denied' };
 
-  const { body } = await fn('auth-login', { ...a, device_token: token });
+  const { role, ...rest } = a;
+  const { body } = await fn('auth-login', { ...rest, device_token: token });
   if (!body?.ok) return { ok: false, reason: (body?.reason as Deny) ?? 'denied' };
 
   // Edge Function が返したセッションを、以後は supabase-js に持たせる
@@ -65,6 +73,7 @@ export async function login(a: {
     access_token: body.access_token, refresh_token: body.refresh_token,
   });
   if (error) return { ok: false, reason: 'denied' };
+  setChosenRole(role);
   return { ok: true, next: body.next as Next };
 }
 

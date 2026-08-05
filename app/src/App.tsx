@@ -8,12 +8,14 @@ import { Login, RegisterDevice, ChangePin, hasDevice } from './screens/Auth';
 import { Consent, PolicyFull } from './screens/Policy';
 import { Home, Practice } from './screens/Staff';
 import { Settings } from './screens/Settings';
+import { SupportHome, SharedRecord } from './screens/Support';
+import { MgmtHome, Quality, Devices } from './screens/Mgmt';
 import { myStore } from './lib/staff';
 import { Screen, Bar, P, Spacer } from './ui/kit';
-import { loginGate, session, signOut, me, type Next } from './lib/api';
+import { loginGate, session, signOut, me, chosenRole, type Next } from './lib/api';
 
 type View = 'boot' | 'register' | 'login' | 'change_pin' | 'consent' | 'policy'
-           | 'home' | 'practice' | 'settings';
+           | 'home' | 'practice' | 'settings' | 'shared' | 'quality' | 'devices';
 
 export function App() {
   const [view, setView] = useState<View>('boot');
@@ -68,8 +70,31 @@ export function App() {
     <Settings name={name} personCode={code}
       onPolicy={() => { setBack('settings'); setView('policy'); }}
       onSignOut={async () => { await signOut(); setView('login'); }}
+      onDevices={chosenRole() === 'mgmt' ? () => setView('devices') : undefined}
       onBack={() => setView('home')} />
   );
+
+  // 兼務がいるので、サインインで選んだ役割で入口を分ける
+  if (chosenRole() === 'mgmt') {
+    if (view === 'quality') return <Quality onBack={() => setView('home')} />;
+    if (view === 'devices') return <Devices onBack={() => setView('home')} />;
+    return (
+      <MgmtHome name={name}
+        onQuality={() => setView('quality')}
+        onSettings={() => setView('settings')} />
+    );
+  }
+
+  if (chosenRole() === 'support') {
+    if (view === 'shared' && recId) return (
+      <SharedRecord id={recId} onBack={() => { setRecId(null); setView('home'); }} />
+    );
+    return (
+      <SupportHome name={name}
+        onOpen={(id) => { setRecId(id); setView('shared'); }}
+        onSettings={() => setView('settings')} />
+    );
+  }
 
   if (view === 'practice') return (
     <Practice id={recId} storeId={storeId} onBack={() => { setRecId(null); setView('home'); }} />
