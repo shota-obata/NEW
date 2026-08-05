@@ -168,7 +168,7 @@ export function Login(p: { onDone: (next: Next) => void; onRegister: () => void 
         <div style={{ display: 'grid', gap: 9 }}>
           <Button disabled={!ready || busy} onClick={async () => {
             setBusy(true); setErr(null);
-            const res = await login({ person_code: person, store_code: store, pin,
+            const res = await login({ person_code: person, store_code: store, pin, role,
                                       mgmt_code: d.needMgmt ? mgmt : undefined });
             setBusy(false); setPin('');
             if (res.ok) p.onDone(res.next); else setErr(DENY_TEXT[res.reason]);

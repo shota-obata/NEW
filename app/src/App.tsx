@@ -8,12 +8,13 @@ import { Login, RegisterDevice, ChangePin, hasDevice } from './screens/Auth';
 import { Consent, PolicyFull } from './screens/Policy';
 import { Home, Practice } from './screens/Staff';
 import { Settings } from './screens/Settings';
+import { SupportHome, SharedRecord } from './screens/Support';
 import { myStore } from './lib/staff';
 import { Screen, Bar, P, Spacer } from './ui/kit';
-import { loginGate, session, signOut, me, type Next } from './lib/api';
+import { loginGate, session, signOut, me, chosenRole, type Next } from './lib/api';
 
 type View = 'boot' | 'register' | 'login' | 'change_pin' | 'consent' | 'policy'
-           | 'home' | 'practice' | 'settings';
+           | 'home' | 'practice' | 'settings' | 'shared';
 
 export function App() {
   const [view, setView] = useState<View>('boot');
@@ -70,6 +71,18 @@ export function App() {
       onSignOut={async () => { await signOut(); setView('login'); }}
       onBack={() => setView('home')} />
   );
+
+  // 兼務がいるので、サインインで選んだ役割で入口を分ける
+  if (chosenRole() === 'support') {
+    if (view === 'shared' && recId) return (
+      <SharedRecord id={recId} onBack={() => { setRecId(null); setView('home'); }} />
+    );
+    return (
+      <SupportHome name={name}
+        onOpen={(id) => { setRecId(id); setView('shared'); }}
+        onSettings={() => setView('settings')} />
+    );
+  }
 
   if (view === 'practice') return (
     <Practice id={recId} storeId={storeId} onBack={() => { setRecId(null); setView('home'); }} />
