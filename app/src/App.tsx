@@ -11,9 +11,9 @@ import { Login, RegisterDevice, ChangePin, hasDevice } from './screens/Auth';
 import { Consent, PolicyFull } from './screens/Policy';
 import { Home, Practice } from './screens/Staff';
 import { Settings } from './screens/Settings';
-import { SupportHome, SharedRecord } from './screens/Support';
+import { SupportHome, SharedRecord, StaffList, StaffDetail } from './screens/Support';
 import { MgmtHome, Quality, Devices } from './screens/Mgmt';
-import { JourneyScreen, CapMap, InboxScreen, PostNotice, Consults, Holds } from './screens/Core';
+import { JourneyScreen, CapMap, InboxScreen, PostNotice, Holds } from './screens/Core';
 import { RoleSwitch } from './screens/Role';
 import { currentCP } from './lib/core';
 import { myStore } from './lib/staff';
@@ -131,17 +131,25 @@ export function App() {
 
   // ---- Support ----
   if (role === 'support') {
+    if (recId) return (
+      <SharedRecord id={recId} onBack={() => setRecId(null)} />
+    );
     if (nav === 'notice') return <PostNotice kind="support_to_mgmt" nav={bar} onBack={home} />;
     if (nav === 'staff') {
-      if (sub === 'consults') return <Consults canReply nav={bar} onBack={() => setSub(null)} />;
-      if (sub && recId) return <SharedRecord id={recId} onBack={() => { setRecId(null); setSub(null); }} />;
-      return <SupportHome name={name} nav={bar}
-               onOpen={(id) => { setRecId(id); setSub('rec'); }}
-               onSettings={() => go('settings')} />;
+      // 一覧 → 詳細。担当が1名でも一覧を飛ばさない
+      if (sub) return (
+        <StaffDetail staffId={sub} nav={bar}
+          onBack={() => setSub(null)}
+          onOpenRecord={(id) => setRecId(id)}
+          onNotice={() => go('notice')} />
+      );
+      return <StaffList nav={bar} onOpen={(id) => setSub(id)} />;
     }
-    if (recId) return <SharedRecord id={recId} onBack={() => setRecId(null)} />;
     return <SupportHome name={name} nav={bar}
-             onOpen={(id) => setRecId(id)} onSettings={() => go('settings')} />;
+             onOpen={(id) => setRecId(id)}
+             onStaff={(id) => { setNav('staff'); setSub(id); }}
+             onList={() => go('staff')}
+             onSettings={() => go('settings')} />;
   }
 
   // ---- Staff ----
