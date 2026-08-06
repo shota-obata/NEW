@@ -433,6 +433,14 @@ export function Holds(p: { onBack: () => void; nav?: NavSlots }) {
   );
 }
 
+const Chip = (q: { children: React.ReactNode }) => (
+  <span style={{ padding: '5px 10px', borderRadius: r.pill, fontSize: 10,
+                 fontWeight: 700, letterSpacing: '.02em', color: c.chipText,
+                 background: c.chipBg, border: `1px solid ${c.line}` }}>
+    {q.children}
+  </span>
+);
+
 const area: React.CSSProperties = {
   width: '100%', minHeight: 74, padding: '13px 15px', borderRadius: r.input,
   border: `1px solid ${c.line}`, background: c.input, font: 'inherit',
@@ -455,11 +463,64 @@ export function CapMap(p: { staffId?: string; onBack: () => void ; nav?: NavSlot
   }, [ax, tab]);
 
   const valOf = (id: string) => vs.find((v) => v.param_id === id);
-  const tone = (s?: string) =>
-    s === '接続済み' ? [c.tealText, c.tealBg, c.tealLine]
-    : s === '検証中' ? [c.weaker, c.flat, c.line]
-    : s === '未検証' ? [c.warmText, c.warmBg, c.warmLine]
+
+  // 色は3つだけ。「未検証」は検証中と同じ配色に破線罫線を足す。
+  // 色を増やすと、状態が4段階の「評価」に見える（第2便 L）
+  const tone = (st?: string): [string, string, string] =>
+    st === '接続済み' ? [c.tealText, c.tealBg, c.tealLine]
+    : st === '検証中' ? [c.weaker, c.flat, c.line]
     : [c.warmText, c.warmBg, c.warmLine];
+
+  const Row = (q: { param: Param; sub?: boolean }) => {
+    const v = valOf(q.param.id);
+    const st = v?.status ?? '未接続';
+    const [fg, bg, ln] = tone(st);
+    const unverified = !!v?.unverified;
+    const chips = q.param.sources ?? [];
+
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'baseline',
+                      justifyContent: 'space-between', gap: 10 }}>
+          <b style={{ fontSize: q.sub ? 12.5 : 14.5, fontWeight: q.sub ? 600 : 640 }}>
+            {q.param.name}
+          </b>
+          <span style={{ padding: '4px 9px', borderRadius: r.pill, fontSize: 10.5,
+                         fontWeight: 700, color: fg, background: bg, flex: '0 0 auto',
+                         border: unverified ? `1px dashed ${c.dash}` : `1px solid ${ln}` }}>
+            {unverified ? '未検証' : st}
+          </span>
+        </div>
+
+        {/* バーは value そのまま。取る値は 0/25/50/75/100 の5段階だけ */}
+        <div style={{ position: 'relative', height: q.sub ? 4 : 6, marginTop: q.sub ? 6 : 9,
+                      borderRadius: r.pill, background: c.line }}>
+          <div style={{ position: 'absolute', inset: 0, width: `${v?.value ?? 0}%`,
+                        borderRadius: r.pill,
+                        background: st === '未接続' ? c.warmBar : c.teal }} />
+        </div>
+
+        {/* ソースチップは定義側の「どこから来る値か」。記録の題名は出さない（第3便 Y）*/}
+        {!q.sub && chips.length > 0 && (
+          <div style={{ marginTop: 9, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {chips.slice(0, 3).map((sname) => <Chip key={sname}>{sname}</Chip>)}
+            {chips.length > 3 && <Chip>他 {chips.length - 3}件</Chip>}
+          </div>
+        )}
+
+        {!q.sub && st === '未接続' && (
+          <div style={{ marginTop: 7, fontSize: 11, lineHeight: 1.7, color: c.weaker }}>
+            まだ記録が1件も繋がっていません。
+          </div>
+        )}
+        {!q.sub && unverified && (
+          <div style={{ marginTop: 7, fontSize: 11, lineHeight: 1.7, color: c.weaker }}>
+            導入時の初期値のまま、90日動いていません{v?.basis ? `（${v.basis}）` : ''}。
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <Screen {...p.nav} bar={<Bar title="Capability Map" right="点数ではありません" />}
@@ -480,58 +541,14 @@ export function CapMap(p: { staffId?: string; onBack: () => void ; nav?: NavSlot
 
       <div style={{ marginTop: 20, display: 'grid', gap: 16 }}>
         {ps.filter((x) => !x.parent_id).map((x) => {
-          const v = valOf(x.id);
-          const [fg, bg, ln] = tone(v?.effective_status);
           const subs = ps.filter((s) => s.parent_id === x.id);
           return (
             <div key={x.id}>
-              <div style={{ display: 'flex', alignItems: 'baseline',
-                            justifyContent: 'space-between', gap: 10 }}>
-                <b style={{ fontSize: 14.5, fontWeight: 640 }}>{x.name}</b>
-                <span style={{ padding: '4px 9px', borderRadius: r.pill, fontSize: 10.5,
-                               fontWeight: 700, color: fg, background: bg,
-                               border: `1px solid ${ln}` }}>
-                  {v?.effective_status ?? '未接続'}
-                </span>
-              </div>
-              <div style={{ position: 'relative', height: 6, marginTop: 9,
-                            borderRadius: r.pill, background: c.line }}>
-                <div style={{ position: 'absolute', inset: 0, width: `${v?.value ?? 0}%`,
-                              borderRadius: r.pill,
-                              background: v?.effective_status === '接続済み' ? c.teal : c.warmBar }} />
-              </div>
-              {v?.source === 'initial_estimate' && (
-                <div style={{ marginTop: 7, fontSize: 11, color: c.warmText }}>
-                  導入時の初期値です{v.basis ? `（${v.basis}）` : ''}
-                  {v.unverified && ' · 3か月動いていません'}
-                </div>
-              )}
-              {x.sources.length === 0 && (
-                <div style={{ marginTop: 7, fontSize: 11, color: c.weaker }}>
-                  ソースが未設定です。数値は動きません。
-                </div>
-              )}
+              <Row param={x} />
               {subs.length > 0 && (
                 <div style={{ marginTop: 10, paddingLeft: 12,
-                              borderLeft: `2px solid ${c.line}`, display: 'grid', gap: 9 }}>
-                  {subs.map((s) => {
-                    const sv = valOf(s.id);
-                    return (
-                      <div key={s.id}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                          <span style={{ fontSize: 12.5 }}>{s.name}</span>
-                          <span style={{ fontSize: 11, color: c.weaker }}>
-                            {sv?.effective_status ?? '未接続'}
-                          </span>
-                        </div>
-                        <div style={{ height: 4, marginTop: 6, borderRadius: r.pill,
-                                      background: c.line, position: 'relative' }}>
-                          <div style={{ position: 'absolute', inset: 0, width: `${sv?.value ?? 0}%`,
-                                        borderRadius: r.pill, background: c.teal }} />
-                        </div>
-                      </div>
-                    );
-                  })}
+                              borderLeft: `2px solid ${c.line}`, display: 'grid', gap: 10 }}>
+                  {subs.map((sp) => <Row key={sp.id} param={sp} sub />)}
                 </div>
               )}
             </div>
@@ -543,7 +560,8 @@ export function CapMap(p: { staffId?: string; onBack: () => void ; nav?: NavSlot
       <Card tone="flat">
         <div style={{ ...t.small, color: c.weak }}>
           これは点数ではありません。<b style={{ fontWeight: 660, color: c.text }}>根拠の接続度</b>です。
-          記録が 増えるほど動きます。スタッフ間では共有されません。
+          記録を共有すると繋がりが1本増え、状態が動きます。
+          数値が動くのは Checkpoint に到達したときだけです。スタッフ間では共有されません。
         </div>
       </Card>
       <Spacer />

@@ -34,6 +34,8 @@ export const c = {
   toggleOff: '#ddd8ce',
   radioOff: '#c4beb4',
   segBg: '#e6e2da',
+  chipBg: '#f2efe9',
+  chipText: '#6b6862',
 } as const;
 
 // 見出しは明朝系。日本語は Hiragino / Noto Serif JP へ落ちる

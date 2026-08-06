@@ -126,8 +126,11 @@ export const holds = async (cp_id: string) =>
 export type Param = { id: string; name: string; sources: string[]; parent_id: string | null; axis_id: string };
 export type Axis = { id: string; code: 'area' | 'step'; label: string };
 export type Val = {
-  staff_id: string; param_id: string; value: number; status: string;
-  source: string; basis: string | null; effective_status: string; unverified: boolean;
+  staff_id: string; param_id: string; value: number;
+  status: '接続済み' | '検証中' | '未接続';
+  source: string; basis: string | null;
+  unverified: boolean;      // 初期値のまま90日。色は増やさず破線で示す
+  source_count: number;     // 繋がっている記録の本数
 };
 
 export const axes = async () =>
@@ -137,8 +140,11 @@ export const params = async (axis_id: string) =>
   ((await sb.from('capability_params').select('*').eq('axis_id', axis_id)
       .is('hidden_at', null).order('sort_order')).data ?? []) as Param[];
 
+// バッジは value から決めない（第2便 L）。
+// 「接続済み／検証中／未接続」は証拠に繋がっているかどうかの状態で、
+// 上手さの段階ではない。閾値でバッジを出すと Map が点数表になる。
 export const values = async (staff_id?: string) => {
-  let q = sb.from('v_capability_current').select('*');
+  let q = sb.from('v_capability_display').select('*');
   if (staff_id) q = q.eq('staff_id', staff_id);
   return ((await q).data ?? []) as Val[];
 };
