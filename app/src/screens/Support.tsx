@@ -5,7 +5,7 @@
 // 記録を開くと、開いた事実が本人に見える（就業規則 第5条第1項）。
 
 import { useEffect, useState } from 'react';
-import { Screen, Bar, H, P, Card, Kicker, Button, Spacer } from '../ui/kit';
+import { Screen, Bar, H, P, Card, Kicker, Button, Spacer , type NavSlots } from '../ui/kit';
 import { c, t, r } from '../ui/tokens';
 import { assignedStaff, sharedRecords, markViewed, type Staff } from '../lib/support';
 import { listImages, imageUrl, viewers, type Record_, type Img } from '../lib/staff';
@@ -14,6 +14,7 @@ const md = (s: string) => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
 
 export function SupportHome(p: {
   name: string | null; onOpen: (id: string) => void; onSettings: () => void;
+  nav?: NavSlots;
 }) {
   const [staff, setStaff] = useState<Staff[] | null>(null);
   const [recs, setRecs] = useState<(Record_ & { staff_id: string })[] | null>(null);
@@ -23,7 +24,7 @@ export function SupportHome(p: {
   const nameOf = (id: string) => staff?.find((s) => s.id === id)?.display_name ?? '—';
 
   return (
-    <Screen bar={<Bar title="Support" right={p.name ?? undefined} />}
+    <Screen {...p.nav} bar={<Bar title="Support" right={p.name ?? undefined} />}
       footer={<Button variant="ghost" onClick={p.onSettings}>設定</Button>}>
 
       <H>{recs === null ? ' ' : recs.length === 0 ? '共有された記録は、まだありません。' : '共有された記録'}</H>

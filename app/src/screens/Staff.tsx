@@ -4,7 +4,7 @@
 // 初日は本当に0件なので、0件のときに何をすればいいかだけを示す。
 
 import { useEffect, useRef, useState } from 'react';
-import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer } from '../ui/kit';
+import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer , type NavSlots } from '../ui/kit';
 import { c, t, r, serif } from '../ui/tokens';
 import {
   myRecords, myStore, storeState, createRecord, saveRecord, getRecord,
@@ -20,7 +20,7 @@ const md = (s: string) => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
 // ============================================================
 
 export function Home(p: { name: string | null; onOpen: (id: string) => void; onNew: () => void;
-                          onSettings: () => void }) {
+                          onSettings: () => void ; nav?: NavSlots}) {
   const [recs, setRecs] = useState<Record_[] | null>(null);
   const [st, setSt] = useState<{ open: boolean; closedDay: boolean } | null>(null);
 
@@ -33,7 +33,7 @@ export function Home(p: { name: string | null; onOpen: (id: string) => void; onN
   const drafts = recs?.filter((x) => !x.shared_at) ?? [];
 
   return (
-    <Screen bar={<Bar title="Home" right={p.name ? `${p.name} · ${md(today())}` : undefined} />}
+    <Screen {...p.nav} bar={<Bar title="Home" right={p.name ? `${p.name} · ${md(today())}` : undefined} />}
       footer={<Button onClick={p.onNew}>記録を書く</Button>}>
 
       {/* 定休日・時間外は、義務ではないことを先に伝える */}
@@ -137,7 +137,7 @@ const FIELDS: [keyof Record_, string, string][] = [
   ['next_gain', '次回への経験値の貯め方', '骨格タイプ別に、角度で合わせる手順を1つ作る'],
 ];
 
-export function Practice(p: { id: string | null; storeId: string | null; onBack: () => void }) {
+export function Practice(p: { id: string | null; storeId: string | null; onBack: () => void ; nav?: NavSlots}) {
   const [rec, setRec] = useState<Record_ | null>(null);
   const [title, setTitle] = useState('');
   const [imgs, setImgs] = useState<Img[]>([]);
@@ -166,7 +166,7 @@ export function Practice(p: { id: string | null; storeId: string | null; onBack:
   );
 
   if (!rec) return (
-    <Screen bar={<Bar title="Practice記録" />}><Spacer h={30} /><P>読み込んでいます…</P></Screen>
+    <Screen {...p.nav} bar={<Bar title="Practice記録" />}><Spacer h={30} /><P>読み込んでいます…</P></Screen>
   );
 
   const patch = async (k: keyof Record_, v: string) => {
@@ -175,7 +175,7 @@ export function Practice(p: { id: string | null; storeId: string | null; onBack:
   };
 
   return (
-    <Screen bar={<Bar title="Practice記録" right={rec.shared_at ? '共有済み' : '下書き'} />}
+    <Screen {...p.nav} bar={<Bar title="Practice記録" right={rec.shared_at ? '共有済み' : '下書き'} />}
       footer={
         <div style={{ display: 'grid', gap: 9 }}>
           {rec.shared_at ? (

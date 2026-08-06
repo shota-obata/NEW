@@ -7,7 +7,7 @@
 // 3つが揃うまで1行も返らない（就業規則 第6条第3項）。
 
 import { useEffect, useState } from 'react';
-import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer } from '../ui/kit';
+import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer , type NavSlots } from '../ui/kit';
 import { c, t, r } from '../ui/tokens';
 import { consentGap, supportQuality, gateOpen, policyState, storageForecast,
          rollout, issueCode, issuePin, unlock, devicesOf, revokeDevice,
@@ -17,6 +17,7 @@ const mb = (n: number) => (n / 1048576).toFixed(1) + ' MB';
 
 export function MgmtHome(p: {
   name: string | null; onQuality: () => void; onSettings: () => void;
+  nav?: NavSlots;
 }) {
   const [gap, setGap] = useState<{ total: number; consented: number } | null>(null);
   const [pol, setPol] = useState<{ version: string; effective_from: string; announced_at: string | null } | null>(null);
@@ -32,7 +33,7 @@ export function MgmtHome(p: {
   const past = pol ? new Date(pol.effective_from) <= new Date() : false;
 
   return (
-    <Screen bar={<Bar title="Management" right={p.name ?? undefined} />}
+    <Screen {...p.nav} bar={<Bar title="Management" right={p.name ?? undefined} />}
       footer={<Button variant="ghost" onClick={p.onSettings}>設定</Button>}>
 
       <H>設計で直せることを見ます。</H>
@@ -133,7 +134,7 @@ const Cond = (q: { ok: boolean; label: string; sub: string }) => (
 // 閲覧（監査ログの唯一の例外）
 // ============================================================
 
-export function Quality(p: { onBack: () => void }) {
+export function Quality(p: { onBack: () => void ; nav?: NavSlots}) {
   const [open, setOpen] = useState<boolean | null>(null);
   const [rows, setRows] = useState<Quality[]>([]);
   const [gap, setGap] = useState<{ total: number; consented: number } | null>(null);
@@ -145,13 +146,13 @@ export function Quality(p: { onBack: () => void }) {
   }, []);
 
   if (open === null) return (
-    <Screen bar={<Bar title="介入の質" />}><Spacer h={30} /><P>確認しています…</P></Screen>
+    <Screen {...p.nav} bar={<Bar title="介入の質" />}><Spacer h={30} /><P>確認しています…</P></Screen>
   );
 
   if (!open) {
     const left = gap ? gap.total - gap.consented : null;
     return (
-      <Screen bar={<Bar title="介入の質" right="ロック中" />}
+      <Screen {...p.nav} bar={<Bar title="介入の質" right="ロック中" />}
         footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
         <H>3つが揃うまで開きません。</H>
         <P>
@@ -182,7 +183,7 @@ export function Quality(p: { onBack: () => void }) {
   }
 
   return (
-    <Screen bar={<Bar title="介入の質" right="Supportの返答 · 30日" />}
+    <Screen {...p.nav} bar={<Bar title="介入の質" right="Supportの返答 · 30日" />}
       footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
       <div style={{ marginTop: 18, padding: '13px 15px', borderRadius: r.input,
                     background: c.tealBg, border: `1px solid ${c.tealLine}` }}>
@@ -247,7 +248,7 @@ export function Quality(p: { onBack: () => void }) {
 // ============================================================
 
 
-export function Devices(p: { onBack: () => void }) {
+export function Devices(p: { onBack: () => void ; nav?: NavSlots}) {
   const [rows, setRows] = useState<Rollout[] | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [devs, setDevs] = useState<Device[]>([]);
@@ -260,7 +261,7 @@ export function Devices(p: { onBack: () => void }) {
 
 
   return (
-    <Screen bar={<Bar title="端末" right="1人3台まで" />}
+    <Screen {...p.nav} bar={<Bar title="端末" right="1人3台まで" />}
       footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
 
       <H>入れる端末を、ここで決めます。</H>
