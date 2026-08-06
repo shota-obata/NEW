@@ -15,20 +15,23 @@ import { SupportHome, SharedRecord } from './screens/Support';
 import { MgmtHome, Quality, Devices } from './screens/Mgmt';
 import { JourneyScreen, CapMap, InboxScreen, PostNotice, Consults } from './screens/Core';
 import { RoleSwitch } from './screens/Role';
+import { currentCP } from './lib/core';
 import { myStore } from './lib/staff';
 import { Screen, Bar, P, Spacer, TabBar, Pills, MgmtNav, type Item } from './ui/kit';
 import { loginGate, session, signOut, me, chosenRole, type Next, type Role } from './lib/api';
 
 type Gate = 'boot' | 'register' | 'login' | 'change_pin' | 'consent';
 
-const TABS: Record<Role, Item[]> = {
-  staff: [['home', 'Home'], ['practice', 'Practice'], ['cp3', 'CP3'],
+// Staff の CP タブは「現在の未到達CP」1件を出すので、
+// ラベルはその code に追従する。全部到達していれば "CP" のまま。
+const TABS = (cp: string | null): Record<Role, Item[]> => ({
+  staff: [['home', 'Home'], ['practice', 'Practice'], ['cp', cp ?? 'CP'],
           ['map', 'Map'], ['inbox', '受信'], ['role', '役割']],
   support: [['home', 'Home'], ['inbox', '受信'], ['staff', 'スタッフ'],
             ['notice', '通達'], ['role', '役割']],
   mgmt: [['home', 'Home'], ['inbox', '受信'], ['design', '設計'], ['notice', '通達'],
          ['view', '閲覧'], ['devices', '端末'], ['settings', '設定'], ['role', '役割']],
-};
+});
 
 export function App() {
   const [gate, setGate] = useState<Gate | 'ok'>('boot');
@@ -39,6 +42,7 @@ export function App() {
   const [code, setCode] = useState<string | null>(null);
   const [storeId, setStoreId] = useState<string | null>(null);
   const [recId, setRecId] = useState<string | null>(null);
+  const [cpCode, setCpCode] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -54,6 +58,7 @@ export function App() {
         setName(x.display_name); setCode(x.person_code);
       });
       myStore().then((st) => st && setStoreId(st.id));
+      currentCP().then(({ cp }) => setCpCode(cp?.code ?? null));
     })();
   }, []);
 
@@ -82,11 +87,12 @@ export function App() {
   );
   if (sub === 'policy') return <PolicyFull onBack={() => setSub(null)} />;
 
+  const tabs = TABS(cpCode);
   const bar = role === 'staff'
-    ? { tabs: <TabBar items={TABS.staff} at={nav} onGo={go} /> }
+    ? { tabs: <TabBar items={tabs.staff} at={nav} onGo={go} /> }
     : role === 'support'
-      ? { nav: <Pills items={TABS.support} at={nav} onGo={go} /> }
-      : { nav: <MgmtNav items={TABS.mgmt} at={nav} onGo={go} /> };
+      ? { nav: <Pills items={tabs.support} at={nav} onGo={go} /> }
+      : { nav: <MgmtNav items={tabs.mgmt} at={nav} onGo={go} /> };
 
   // ---- 役割の切替（兼務がいる。小畑さんは Support ＋ Staff）----
   if (nav === 'role') return (
@@ -135,7 +141,7 @@ export function App() {
   }
 
   // ---- Staff ----
-  if (nav === 'cp3') return <JourneyScreen canDecide={false} nav={bar} onBack={home} />;
+  if (nav === 'cp') return <JourneyScreen canDecide={false} nav={bar} onBack={home} />;
   if (nav === 'map') return <CapMap nav={bar} onBack={home} />;
   if (nav === 'practice') return (
     <Practice id={recId} storeId={storeId} onBack={home} />
@@ -144,6 +150,7 @@ export function App() {
     <Home name={name} nav={bar}
       onOpen={(id) => { setRecId(id); setNav('practice'); }}
       onNew={() => { setRecId(null); setNav('practice'); }}
+      onHolds={() => go('holds')}
       onSettings={() => go('settings')} />
   );
 }

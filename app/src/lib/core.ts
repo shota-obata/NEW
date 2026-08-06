@@ -94,6 +94,29 @@ export async function hold(cp_id: string, reason: string, add_what: string) {
   return !error;
 }
 
+// 未到達のCPを1件。タブは常にこれを出し、ラベルは code に追従する。
+// 2段そろって初めて到達なので、片方だけでは未到達のまま。
+export async function currentCP(staffId?: string): Promise<{ cp: CP | null; all: CP[] }> {
+  const j = await myJourney(staffId);
+  if (!j) return { cp: null, all: [] };
+  const all = await checkpoints(j.id);
+  const reached = (x: CP) => !!x.os_passed_at && !!x.support_decided_at;
+  return { cp: all.find((x) => !reached(x)) ?? null, all };
+}
+
+// 自分の保留。0件でも呼び出し側はボックスを消さない（保留の瞬間に
+// 箱が生えると「落ちた」ように見えるため）
+export async function myHolds() {
+  const { cp, all } = await currentCP();
+  void cp;
+  if (all.length === 0) return [];
+  const { data } = await sb.from('checkpoint_holds')
+    .select('*').in('checkpoint_id', all.map((x) => x.id))
+    .is('resolved_at', null).order('created_at', { ascending: false });
+  return (data ?? []) as
+    { id: string; checkpoint_id: string; reason: string; add_what: string; created_at: string }[];
+}
+
 export const holds = async (cp_id: string) =>
   ((await sb.from('checkpoint_holds').select('*').eq('checkpoint_id', cp_id)
       .is('resolved_at', null)).data ?? []) as

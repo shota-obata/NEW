@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer , type NavSlots } from '../ui/kit';
 import { c, t, r, serif } from '../ui/tokens';
+import { myHolds } from '../lib/core';
 import {
   myRecords, myStore, storeState, createRecord, saveRecord, getRecord,
   listImages, uploadImage, imageUrl, removeImage, share, unshare, viewers,
@@ -20,12 +21,15 @@ const md = (s: string) => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
 // ============================================================
 
 export function Home(p: { name: string | null; onOpen: (id: string) => void; onNew: () => void;
-                          onSettings: () => void ; nav?: NavSlots}) {
+                          onSettings: () => void; onHolds: () => void;
+                          nav?: NavSlots }) {
   const [recs, setRecs] = useState<Record_[] | null>(null);
   const [st, setSt] = useState<{ open: boolean; closedDay: boolean } | null>(null);
+  const [hd, setHd] = useState<{ id: string; reason: string; add_what: string }[]>([]);
 
   useEffect(() => {
     myRecords(5).then(setRecs);
+    myHolds().then(setHd);
     myStore().then((s) => s && storeState(s.id).then(setSt));
   }, []);
 
@@ -106,6 +110,28 @@ export function Home(p: { name: string | null; onOpen: (id: string) => void; onN
           </Card>
         </>
       )}
+
+      {/* 保留中。0件でも消さない。
+          消すと、保留になった瞬間に新しい箱が生えることになり、
+          「落ちた」ように見える。預けてある状態が常にそこにある形にする。 */}
+      <Spacer />
+      <button onClick={p.onHolds}
+        style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
+                 padding: '15px 17px', borderRadius: r.card,
+                 background: c.flat, border: `1px solid ${c.cardLine}` }}>
+        <div style={{ display: 'flex', alignItems: 'baseline',
+                      justifyContent: 'space-between', gap: 10 }}>
+          <b style={{ fontSize: 13.5, fontWeight: 640 }}>保留中</b>
+          <span style={{ fontSize: 11, color: c.label }}>
+            {hd.length === 0 ? 'いまはありません' : `${hd.length} 件`}
+          </span>
+        </div>
+        <div style={{ marginTop: 6, fontSize: 11.5, lineHeight: 1.7, color: c.weaker }}>
+          {hd.length === 0
+            ? '「まだ早い」と預かったものは、ここに置かれます。'
+            : hd[0].add_what}
+        </div>
+      </button>
 
       {/* 一度読めば済むもの・たまにしか使わないものは設定へ。
           日常の画面に置くと、それ自体が判断になる（10c と同じ考え方） */}

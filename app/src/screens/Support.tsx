@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import { Screen, Bar, H, P, Card, Kicker, Button, Spacer , type NavSlots } from '../ui/kit';
 import { c, t, r } from '../ui/tokens';
-import { assignedStaff, sharedRecords, markViewed, type Staff } from '../lib/support';
+import { assignedStaff, sharedRecords, markViewed, myViewed, type Staff } from '../lib/support';
 import { listImages, imageUrl, viewers, type Record_, type Img } from '../lib/staff';
 
 const md = (s: string) => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
@@ -19,13 +19,39 @@ export function SupportHome(p: {
   const [staff, setStaff] = useState<Staff[] | null>(null);
   const [recs, setRecs] = useState<(Record_ & { staff_id: string })[] | null>(null);
 
-  useEffect(() => { assignedStaff().then(setStaff); sharedRecords().then(setRecs); }, []);
+  const [seenIds, setSeenIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    assignedStaff().then(setStaff);
+    sharedRecords().then(setRecs);
+    myViewed().then(setSeenIds);
+  }, []);
+
+  // 自分がまだ開いていないもの。古い順に片づける形にする
+  const unread = (recs ?? []).filter((x) => !seenIds.includes(x.id))
+    .slice().sort((a, b) => (a.shared_at ?? '').localeCompare(b.shared_at ?? ''));
 
   const nameOf = (id: string) => staff?.find((s) => s.id === id)?.display_name ?? '—';
 
   return (
     <Screen {...p.nav} bar={<Bar title="Support" right={p.name ?? undefined} />}
       footer={<Button variant="ghost" onClick={p.onSettings}>設定</Button>}>
+
+      {/* 未読カード。ここでいう未読は「共有された記録」であって、
+          通達（inbox_items）ではない。通達の未読は受信ピルの丸だけで示す。 */}
+      {unread.length > 0 && (
+        <><Spacer h={18} />
+        <Card tone="teal">
+          <Kicker tone="teal">共有された記録 · 未読 {unread.length} 件</Kicker>
+          <div style={{ marginTop: 9, ...t.small, color: c.tealDeep, lineHeight: 1.85 }}>
+            {unread.map((x) => nameOf(x.staff_id)).filter((v, i, a) => a.indexOf(v) === i).join('・')}
+            {' '}から届いています。
+            <b style={{ fontWeight: 660 }}>開くと、開いた事実が本人に見えます。</b>
+          </div>
+          <Spacer h={12} />
+          <Button onClick={() => p.onOpen(unread[0].id)}>いちばん古いものから開く</Button>
+        </Card></>
+      )}
 
       <H>{recs === null ? ' ' : recs.length === 0 ? '共有された記録は、まだありません。' : '共有された記録'}</H>
 

@@ -39,6 +39,15 @@ export async function markViewed(record_id: string) {
     .select();   // 既に見ていれば unique 制約で弾かれる。それでよい
 }
 
+// 自分が開いた記録のid。未読の判定に使う（未読＝まだ開いていない）
+export async function myViewed(): Promise<string[]> {
+  const { data: u } = await sb.auth.getUser();
+  if (!u.user) return [];
+  const { data } = await sb.from('record_views')
+    .select('record_id').eq('viewer_id', u.user.id);
+  return (data ?? []).map((x) => (x as { record_id: string }).record_id);
+}
+
 // 相談への返答。Management には本文が渡らない（v_consultation_trend は
 // body / reply_body の列を持たない）
 export type Consultation = {
