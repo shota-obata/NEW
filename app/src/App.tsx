@@ -13,7 +13,7 @@ import { Home, Practice } from './screens/Staff';
 import { Settings } from './screens/Settings';
 import { SupportHome, SharedRecord } from './screens/Support';
 import { MgmtHome, Quality, Devices } from './screens/Mgmt';
-import { JourneyScreen, CapMap, InboxScreen, PostNotice, Consults } from './screens/Core';
+import { JourneyScreen, CapMap, InboxScreen, PostNotice, Consults, Holds } from './screens/Core';
 import { RoleSwitch } from './screens/Role';
 import { currentCP } from './lib/core';
 import { myStore } from './lib/staff';
@@ -102,7 +102,11 @@ export function App() {
   );
 
   // ---- 共通 ----
-  if (nav === 'inbox') return <InboxScreen nav={bar} onBack={home} />;
+  if (nav === 'inbox') return (
+    <InboxScreen nav={bar} onBack={home}
+      onOpenRecord={role === 'staff' ? (id) => { setRecId(id); setNav('practice'); } : undefined} />
+  );
+  if (nav === 'holds') return <Holds nav={bar} onBack={home} />;
   if (nav === 'settings' && role !== 'mgmt') return (
     <Settings name={name} personCode={code}
       onPolicy={() => setSub('policy')}
@@ -141,7 +145,9 @@ export function App() {
   }
 
   // ---- Staff ----
-  if (nav === 'cp') return <JourneyScreen canDecide={false} nav={bar} onBack={home} />;
+  if (nav === 'cp') return (
+    <JourneyScreen canDecide={false} nav={bar} onBack={home} onHolds={() => go('holds')} />
+  );
   if (nav === 'map') return <CapMap nav={bar} onBack={home} />;
   if (nav === 'practice') return (
     <Practice id={recId} storeId={storeId} onBack={home} />

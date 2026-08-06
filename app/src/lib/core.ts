@@ -202,3 +202,179 @@ export async function postNotice(a: {
   });
   return !error;
 }
+
+// ============================================================
+// 第3便の反映
+// ============================================================
+
+// ---- 店舗設定（相談の注記は必ずこの値と一致させる。A の注記）----
+export type StoreSettings = {
+  store_id: string;
+  consultation_visibility: 'none' | 'trend' | 'full';
+  response_baseline_days: number;
+  practice_slot_minutes: number;
+  required_pace_default: number;
+  retirement_record_policy: 'keep' | 'ask' | 'del' | null;
+};
+
+export async function storeSettings(): Promise<StoreSettings | null> {
+  const { data } = await sb.from('store_settings').select('*').limit(1);
+  return (data?.[0] ?? null) as StoreSettings | null;
+}
+
+// ---- 受信ボックスの送信元（第2便 P ／ 第3便 AB。そのまま画面に出す）----
+// notice の3系統は notices.kind で分ける。source_kind は増やさない。
+export function inboxFrom(kind: string, noticeKind?: string, nudgeCount?: number): string {
+  switch (kind) {
+    case 'notice':
+      return noticeKind === 'mgmt_to_all'     ? 'MANAGEMENTから · 全体通達'
+           : noticeKind === 'support_to_mgmt' ? 'SUPPORTから · 設計への通達'
+           :                                    'MANAGEMENTから · あなた宛';
+    case 'os_suggestion':       return 'GROWTH OSから · 次の問い';
+    case 'nudge':               return `SUPPORTから · 催促 ${nudgeCount ?? 1}回目`;
+    case 'escalation':          return 'GROWTH OSから · 3回届いています';
+    case 'record_reply':        return 'SUPPORTから · 記録への返答';
+    case 'direct_consultation': return 'STAFFから · 直接の相談';
+    case 'agreement_request':   return 'MANAGEMENTから · 同意のお願い';
+    case 'policy_update':       return 'MANAGEMENTから · 規定の更新';
+    case 'storage_alert':       return 'GROWTH OSから · 保存容量';
+    case 'support':             return 'SUPPORTから · 声かけ';
+    default:                    return 'お知らせ';
+  }
+}
+
+// 返信できるのは「次の問い」だけ。催促は「動いてください」であって
+// 「答えてください」ではない。返信欄を付けると催促が会話になる（T）
+export const canReply = (kind: string) => kind === 'os_suggestion';
+
+// 受信ボックスの1件に、中身を添えて返す
+export type InboxRow = Inbox & {
+  from: string; title: string; body: string; notice_kind?: string;
+};
+
+export async function inboxRows(trash = false): Promise<InboxRow[]> {
+  const items = await inbox(trash);
+  const noticeIds = items.filter((x) => x.source_kind === 'notice' && x.source_id)
+                         .map((x) => x.source_id as string);
+  const recIds = items.filter((x) => x.source_kind === 'record_reply' && x.source_id)
+                      .map((x) => x.source_id as string);
+
+  const nx = noticeIds.length
+    ? ((await sb.from('notices').select('id, kind, title, body').in('id', noticeIds)).data ?? [])
+    : [];
+  const rx = recIds.length
+    ? ((await sb.from('practice_records').select('id, title').in('id', recIds)).data ?? [])
+    : [];
+
+  return items.map((x) => {
+    if (x.source_kind === 'notice') {
+      const n = nx.find((v) => (v as { id: string }).id === x.source_id) as
+        { kind: string; title: string; body: string } | undefined;
+      return { ...x, from: inboxFrom('notice', n?.kind), title: n?.title ?? '通達',
+               body: n?.body ?? '', notice_kind: n?.kind };
+    }
+    if (x.source_kind === 'record_reply') {
+      const r = rx.find((v) => (v as { id: string }).id === x.source_id) as
+        { title: string } | undefined;
+      // 本文は複製しない。記録と並べて読むもの（U-2）
+      return { ...x, from: inboxFrom(x.source_kind),
+               title: r?.title ?? '記録', body: `「${r?.title ?? '記録'}」に返答がありました。` };
+    }
+    return { ...x, from: inboxFrom(x.source_kind), title: '', body: '' };
+  });
+}
+
+// ---- CP の1段目。充足の進み方を画面に出す（K）----
+export type CondRow = { id: string; label: string; got: number; need: number; met: boolean };
+
+export async function cpConditions(cp: CP): Promise<CondRow[]> {
+  const conds = (cp as unknown as { conditions: unknown[] | null }).conditions;
+
+  const shared = async () =>
+    ((await sb.from('practice_records')
+        .select('misjudgement, reflection, next_gain')
+        .eq('checkpoint_id', cp.id).not('shared_at', 'is', null)
+        .is('deleted_at', null)).data ?? []) as
+      { misjudgement: string | null; reflection: string | null; next_gain: string | null }[];
+
+  if (!conds || conds.length === 0) {
+    const rows = await shared();
+    return [{ id: 'default', label: '共有した記録', got: rows.length,
+              need: cp.required_evidence, met: rows.length >= cp.required_evidence }];
+  }
+
+  const rows = await shared();
+  const all = await checkpoints(cp.journey_id);
+
+  return (conds as { id: string; label: string; test: Record<string, unknown> }[]).map((c) => {
+    const t = c.test ?? {};
+    const need = Number(t.count ?? 1);
+    let got = 0;
+    if (t.kind === 'shared_records') got = rows.length;
+    else if (t.kind === 'record_field') {
+      const f = t.field === 'misjudgment' ? 'misjudgement'
+              : t.field === 'next_xp'     ? 'next_gain' : 'reflection';
+      got = rows.filter((r) => (r[f as keyof typeof r] ?? '').trim() !== '').length;
+    } else if (t.kind === 'cp_reached') {
+      got = all.some((x) => x.code === t.code &&
+        (x as unknown as { reached_at: string | null }).reached_at) ? 1 : 0;
+    }
+    return { id: c.id, label: c.label, got: Math.min(got, need), need, met: got >= need };
+  });
+}
+
+export const reachedCPs = async (journey_id: string) =>
+  ((await sb.from('checkpoints').select('*').eq('journey_id', journey_id)
+      .not('reached_at', 'is', null).order('reached_at')).data ?? []) as
+    (CP & { reached_at: string })[];
+
+// ---- 保留中（D）----
+export async function holdCards() {
+  const { all } = await currentCP();
+  const past = await sb.from('checkpoints').select('id, code, title');
+  const ids = ((past.data ?? []) as { id: string }[]).map((x) => x.id);
+  if (ids.length === 0) return [];
+  const { data } = await sb.from('checkpoint_holds')
+    .select('*').in('checkpoint_id', ids).order('created_at', { ascending: false });
+  const named = (past.data ?? []) as { id: string; code: string; title: string }[];
+  void all;
+  return ((data ?? []) as {
+    id: string; checkpoint_id: string; reason: string; add_what: string;
+    resolved_at: string | null; created_at: string;
+  }[]).map((h) => ({ ...h, cp: named.find((c) => c.id === h.checkpoint_id) ?? null }));
+}
+
+// ---- 相談（A）。title は本人に入力させない ----
+export async function askAbout(a: { title: string; body: string; support_id?: string | null }) {
+  const { data: u } = await sb.auth.getUser(); if (!u.user) return false;
+  let support = a.support_id ?? null;
+  if (!support) {
+    const { data } = await sb.from('assignments')
+      .select('support_id').eq('staff_id', u.user.id).eq('active', true).limit(1);
+    support = (data?.[0] as { support_id: string } | undefined)?.support_id ?? null;
+  }
+  const { error } = await sb.from('consultations')
+    .insert({ staff_id: u.user.id, support_id: support, title: a.title, body: a.body });
+  return !error;
+}
+
+// ---- 区分03（B・AB）。Support には存在も件数も出ない ----
+export async function tellManagement(body: string) {
+  const { data: u } = await sb.auth.getUser(); if (!u.user) return false;
+  const { data: r } = await sb.from('user_roles')
+    .select('store_id').eq('user_id', u.user.id).eq('active', true).limit(1);
+  const store_id = (r?.[0] as { store_id: string } | undefined)?.store_id;
+  if (!store_id) return false;
+  const { error } = await sb.from('mgmt_consultations')
+    .insert({ staff_id: u.user.id, store_id, body });
+  return !error;
+}
+
+// ---- 記録への返答（U）。1記録につき1つ ----
+export async function replyToRecord(record_id: string, body: string) {
+  const { data: u } = await sb.auth.getUser(); if (!u.user) return false;
+  const { error } = await sb.from('practice_records').update({
+    support_reply: body, replied_at: new Date().toISOString(), replied_by: u.user.id,
+  }).eq('id', record_id);
+  return !error;
+}

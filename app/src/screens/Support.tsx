@@ -9,6 +9,7 @@ import { Screen, Bar, H, P, Card, Kicker, Button, Spacer , type NavSlots } from 
 import { c, t, r } from '../ui/tokens';
 import { assignedStaff, sharedRecords, markViewed, myViewed, type Staff } from '../lib/support';
 import { listImages, imageUrl, viewers, type Record_, type Img } from '../lib/staff';
+import { replyToRecord } from '../lib/core';
 
 const md = (s: string) => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
 
@@ -135,6 +136,8 @@ export function SharedRecord(p: { id: string; onBack: () => void }) {
   const [imgs, setImgs] = useState<Img[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [seen, setSeen] = useState<{ at: string; name: string }[]>([]);
+  const [reply, setReply] = useState('');
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -207,6 +210,42 @@ export function SharedRecord(p: { id: string; onBack: () => void }) {
           );
         })}
       </div>
+
+      {/* 返答。1記録につき1つ。往復が続くなら相談（consultations）へ移る（U）*/}
+      <Spacer h={22} />
+      {rec.support_reply ? (
+        <Card tone="teal">
+          <Kicker tone="teal">返答しました</Kicker>
+          <p style={{ margin: '11px 0 0', fontSize: 13, lineHeight: 1.85, color: c.tealDeep }}>
+            {rec.support_reply}
+          </p>
+          <div style={{ marginTop: 10, fontSize: 11, color: c.weaker }}>
+            {rec.replied_at?.slice(5, 16).replace('T', ' ')} · 本人の受信ボックスにも届いています
+          </div>
+        </Card>
+      ) : (
+        <div>
+          <div style={t.field}>返答</div>
+          <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={5}
+            placeholder="答えではなく、次の問いを返してください。"
+            style={{ width: '100%', marginTop: 7, padding: '13px 15px', borderRadius: r.input,
+                     border: `1px solid ${c.line}`, background: c.input, font: 'inherit',
+                     fontSize: 13, lineHeight: 1.8, color: c.text, outline: 'none',
+                     resize: 'vertical', boxSizing: 'border-box' }} />
+          <div style={{ marginTop: 11 }}>
+            <Button disabled={busy || !reply.trim()} onClick={async () => {
+              setBusy(true);
+              const ok = await replyToRecord(p.id, reply.trim());
+              setBusy(false);
+              if (ok) setRec({ ...rec, support_reply: reply.trim(),
+                               replied_at: new Date().toISOString() });
+            }}>返答する</Button>
+          </div>
+          <p style={{ margin: '10px 0 0', fontSize: 11.5, lineHeight: 1.7, color: c.weaker }}>
+            返答までの日数は、平均レスポンスに数えます（起点は共有された時刻）。
+          </p>
+        </div>
+      )}
 
       {/* 開いた事実は本人にも見える。ここで自分の名前が並ぶのが正しい */}
       <Spacer h={22} />

@@ -8,11 +8,11 @@ import { useEffect, useState } from 'react';
 import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer , type NavSlots } from '../ui/kit';
 import { c, t, r } from '../ui/tokens';
 import {
-  consults, ask, replyTo, myJourney, ensureJourney, setPosition, checkpoints,
-  addCheckpoint, supportDecide, hold, axes, params, values, inbox, markRead,
-  softDelete, restore, notices, postNotice,
+  consults, ask, replyTo, myJourney, supportDecide, hold, axes, params, values, markRead,
+  softDelete, restore, postNotice,
+  inboxRows, canReply, askAbout, storeSettings, currentCP, cpConditions, holdCards,
   type Consult, type Journey, type CP, type Axis, type Param, type Val,
-  type Inbox, type Notice,
+  type InboxRow, type StoreSettings, type CondRow,
 } from '../lib/core';
 
 const day = (s: string) => s.slice(5, 10).replace('-', '/');
@@ -127,128 +127,311 @@ export function Consults(p: { canReply: boolean; onBack: () => void ; nav?: NavS
 // Journey と Checkpoint（2段の到達判断）
 // ============================================================
 
-export function JourneyScreen(p: { canDecide: boolean; staffId?: string; onBack: () => void ; nav?: NavSlots}) {
+export function JourneyScreen(p: {
+  canDecide: boolean; staffId?: string; supportName?: string | null;
+  onBack: () => void; onHolds?: () => void; nav?: NavSlots;
+}) {
   const [j, setJ] = useState<Journey | null>(null);
-  const [cps, setCps] = useState<CP[]>([]);
-  const [vision, setVision] = useState('');
-  const [pos, setPos] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [cp, setCp] = useState<CP | null>(null);
+  const [all, setAll] = useState<CP[]>([]);
+  const [conds, setConds] = useState<CondRow[]>([]);
+  const [past, setPast] = useState(false);      // これまでの到達シート
+  const [ask, setAsk] = useState(false);        // 声をかける（相談シート）
+
+  const sup = p.supportName ?? '担当のSupport';
 
   const load = async () => {
     const x = await myJourney(p.staffId);
-    setJ(x); setVision(x?.vision ?? ''); setPos(x?.current_position ?? '');
-    if (x) setCps(await checkpoints(x.id));
+    setJ(x);
+    const { cp: cur, all: list } = await currentCP(p.staffId);
+    setCp(cur); setAll(list);
+    setConds(cur ? await cpConditions(cur) : []);
   };
   useEffect(() => { load(); }, [p.staffId]);
 
-  const ro = !!p.staffId;   // 他人のJourneyは読むだけ
+  const reached = all.filter((x) => (x as unknown as { reached_at: string | null }).reached_at);
+  const title = cp?.code ?? 'CP';
 
-  return (
-    <Screen {...p.nav} bar={<Bar title="Journey" right={ro ? '担当スタッフ' : undefined} />}
+  // ---- Journey がまだ無い / 未到達CPが1つも無い ----
+  if (j && !cp) return (
+    <Screen {...p.nav} bar={<Bar title={title} right={p.staffId ? '担当スタッフ' : undefined} />}
       footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
-
-      <H>{ro ? 'このスタッフの向かう先' : 'どこへ向かっていますか。'}</H>
-      <Spacer h={18} />
-      <div style={{ display: 'grid', gap: 14 }}>
-        <label style={{ display: 'grid', gap: 7 }}>
-          <span style={t.field}>Vision</span>
-          <textarea value={vision} onChange={(e) => setVision(e.target.value)}
-            readOnly={ro}
-            onBlur={async () => { if (!ro && vision.trim()) { await ensureJourney(vision.trim()); load(); } }}
-            placeholder="骨格が違っても、同じ基準で似合わせを説明できる"
-            style={area} />
-        </label>
-        {j && (
-          <label style={{ display: 'grid', gap: 7 }}>
-            <span style={t.field}>いまの現在地</span>
-            <textarea value={pos} onChange={(e) => setPos(e.target.value)}
-              readOnly={ro}
-              onBlur={() => !ro && pos.trim() && setPosition(j.id, pos.trim())}
-              placeholder="基準点を位置で覚えている段階" style={area} />
-          </label>
-        )}
-      </div>
-
-      {j && (
+      {all.length === 0 ? (
         <>
-          <Spacer />
-          <Kicker>Checkpoint</Kicker>
-          <div style={{ marginTop: 12, display: 'grid', gap: 9 }}>
-            {cps.map((x) => <CpCard key={x.id} cp={x} canDecide={p.canDecide} onDone={load} />)}
-            {!ro && <Button variant="outline" disabled={busy} onClick={async () => {
-              const code = `CP${cps.length + 1}`;
-              const title = prompt(`${code} は何を確かめますか`);
-              if (!title?.trim()) return;
-              setBusy(true); await addCheckpoint(j.id, code, title.trim());
-              setBusy(false); load();
-            }}>Checkpoint を足す</Button>}
-          </div>
+          <H>向かう先を、まだ決めていません。</H>
+          <Spacer h={18} />
+          <Card tone="flat"><div style={{ ...t.small, color: c.weak }}>
+            Checkpoint は{sup}と一緒に置きます。次の面談で決まります。
+          </div></Card>
+          <Spacer h={14} />
+          {/* 塗りボタンは置かない — 本人だけでは進まないため */}
+          <Button variant="ghost" onClick={() => setAsk(true)}>{sup}に声をかける</Button>
+        </>
+      ) : (
+        <>
+          <H>いま、次の Checkpoint がありません。</H>
+          <Spacer h={18} />
+          <Card tone="teal">
+            <Kicker tone="teal">到達 {reached.length}件</Kicker>
+            <div style={{ marginTop: 11, display: 'grid', gap: 7 }}>
+              {reached.map((x) => (
+                <div key={x.id} style={{ display: 'flex', justifyContent: 'space-between',
+                                         gap: 10, fontSize: 12.5, color: c.tealDeep }}>
+                  <span>{x.code} · {x.title}</span>
+                  <span style={{ color: c.weaker }}>
+                    {day((x as unknown as { reached_at: string }).reached_at)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+          <Spacer h={14} />
+          <Card tone="flat"><div style={{ ...t.small, color: c.weak }}>
+            次を置くのは{sup}です。急ぎません。
+          </div></Card>
         </>
       )}
       <Spacer />
+      {ask && <ConsultSheet subject="Checkpoint の相談"
+        onClose={() => setAsk(false)} onSent={() => setAsk(false)} />}
+    </Screen>
+  );
+
+  if (!j || !cp) return (
+    <Screen {...p.nav} bar={<Bar title="CP" />}><Spacer h={30} /><P>読み込んでいます…</P></Screen>
+  );
+
+  const os = !!cp.os_passed_at, decided = !!cp.support_decided_at;
+  const left = conds.filter((x) => !x.met).reduce((n, x) => n + (x.need - x.got), 0);
+
+  return (
+    <Screen {...p.nav} bar={<Bar title={title} right={p.staffId ? '担当スタッフ' : undefined} />}
+      footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
+
+      <H>{cp.title}</H>
+
+      {/* ---- 1段目 · GROWTH OS ---- */}
+      <Spacer h={18} />
+      <Card tone={os ? 'teal' : 'flat'}>
+        <div style={{ display: 'flex', alignItems: 'baseline',
+                      justifyContent: 'space-between', gap: 10 }}>
+          <Kicker tone={os ? 'teal' : undefined}>
+            {os ? 'GROWTH OS' : 'GROWTH OS · 集まっているもの'}
+          </Kicker>
+          {os && <span style={{ fontSize: 11, fontWeight: 700, color: c.tealText }}>通過</span>}
+        </div>
+
+        <div style={{ marginTop: 13, display: 'grid', gap: 10 }}>
+          {conds.map((x) => (
+            <div key={x.id} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto',
+                                     gap: 10, alignItems: 'center' }}>
+              <span style={{ width: 18, height: 18, borderRadius: '50%', display: 'grid',
+                             placeItems: 'center', fontSize: 10, fontWeight: 700,
+                             background: x.met ? c.tealFill : 'transparent', color: '#fff',
+                             border: x.met ? 0 : `1.5px solid ${c.toggleOff}` }}>
+                {x.met ? '✓' : ''}
+              </span>
+              <span style={{ fontSize: 13.5, color: c.weak }}>{x.label}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: c.weaker }}>
+                {x.got} / {x.need}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {!os && (
+          <p style={{ margin: '13px 0 0', fontSize: 12.5, lineHeight: 1.8, color: c.weak }}>
+            {left === 1 ? 'あと1件です。' : `あと${left}件で、${sup}の判断に進みます。`}
+          </p>
+        )}
+      </Card>
+
+      {/* ---- 2段目 · SUPPORT。1段目が通るまで出さない（押せないボタンを見せない）---- */}
+      {os && (
+        <>
+          <Spacer h={12} />
+          <Card tone={decided ? 'teal' : 'warm'}>
+            <Kicker tone={decided ? 'teal' : undefined}>SUPPORT</Kicker>
+            {decided ? (
+              <>
+                <div style={{ marginTop: 11, fontSize: 13.5, fontWeight: 640,
+                              color: c.tealDeep }}>到達と判断されました</div>
+                <p style={{ margin: '9px 0 0', ...t.small, color: c.tealDeep, lineHeight: 1.85 }}>
+                  「{cp.support_note}」
+                </p>
+              </>
+            ) : p.canDecide ? (
+              <CpDecide cp={cp} onDone={load} />
+            ) : (
+              <p style={{ margin: '11px 0 0', ...t.small, color: c.warmDeep, lineHeight: 1.85 }}>
+                条件は揃っています。{sup}が見ています。
+              </p>
+            )}
+          </Card>
+        </>
+      )}
+
+      {!os && !decided && (
+        <>
+          <Spacer h={12} />
+          <div style={{ ...t.small, color: c.weaker, lineHeight: 1.8 }}>
+            両方が揃ったときだけ到達です。片方だけは
+            <b style={{ fontWeight: 660, color: c.text }}>落ちたのではなく、預けてある状態</b>です。
+          </div>
+        </>
+      )}
+
+      {/* ---- これまでの到達 ---- */}
+      {reached.length > 0 && (
+        <>
+          <Spacer />
+          <button onClick={() => setPast(true)}
+            style={{ width: '100%', minHeight: 42, cursor: 'pointer', font: 'inherit',
+                     fontSize: 12.5, fontWeight: 640, color: c.weak, background: 'transparent',
+                     border: `1.5px dashed ${c.dash}`, borderRadius: r.input }}>
+            これまでの到達（{reached.length}件）
+          </button>
+        </>
+      )}
+
+      <Spacer />
+
+      {past && (
+        <Sheet onClose={() => setPast(false)}>
+          <h2 style={{ ...t.h2, margin: 0 }}>これまでの到達</h2>
+          <div style={{ marginTop: 18, display: 'grid', gap: 11 }}>
+            {reached.map((x) => (
+              <Card key={x.id} tone="flat">
+                <div style={{ display: 'flex', alignItems: 'baseline',
+                              justifyContent: 'space-between', gap: 10 }}>
+                  <b style={{ fontSize: 13.5, fontWeight: 660 }}>{x.code} · {x.title}</b>
+                  <span style={{ fontSize: 11, color: c.label }}>
+                    {day((x as unknown as { reached_at: string }).reached_at)}
+                  </span>
+                </div>
+                {x.support_note && (
+                  <p style={{ margin: '9px 0 0', ...t.small, color: c.weak }}>
+                    「{x.support_note}」
+                  </p>
+                )}
+              </Card>
+            ))}
+          </div>
+          <Spacer h={16} />
+          <Button variant="ghost" onClick={() => setPast(false)}>閉じる</Button>
+        </Sheet>
+      )}
+      {ask && <ConsultSheet subject={`${cp.code} · ${cp.title}`}
+        onClose={() => setAsk(false)} onSent={() => setAsk(false)} />}
     </Screen>
   );
 }
 
-function CpCard(q: { cp: CP; canDecide: boolean; onDone: () => void }) {
-  const { cp } = q;
-  const os = !!cp.os_passed_at, sup = !!cp.support_decided_at;
-  const reached = os && sup;
+// 2段目の判断。Support だけが押せる（RLS でも担保されている）
+function CpDecide(q: { cp: CP; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
-
   return (
-    <Card tone={reached ? 'teal' : sup || os ? 'warm' : 'plain'}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
-        <b style={{ fontSize: 14, fontWeight: 660 }}>{cp.code} · {cp.title}</b>
-        <span style={{ fontSize: 11, fontWeight: 700,
-                       color: reached ? c.tealText : sup || os ? c.warmText : c.label }}>
-          {reached ? '到達' : os || sup ? '保留' : '進行中'}
-        </span>
-      </div>
-
-      <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
-        <Step ok={os} label="1段目 · Growth OS の条件" sub={os ? '条件が揃っています' : `Evidence ${cp.required_evidence}件が要ります`} />
-        <Step ok={sup} label="2段目 · Support の判断" sub={sup ? (cp.support_note ?? '実務で成立と判断') : 'まだ判断されていません'} />
-      </div>
-
-      {!reached && (
-        <p style={{ margin: '12px 0 0', fontSize: 11.5, lineHeight: 1.7, color: c.weaker }}>
-          両方が揃ったときだけ到達です。片方だけは<b style={{ fontWeight: 660 }}>落ちたのではなく、預けてある状態</b>です。
-        </p>
-      )}
-
-      {q.canDecide && !sup && (
-        <div style={{ marginTop: 12, display: 'grid', gap: 9 }}>
-          <Button variant="outline" disabled={busy} onClick={async () => {
-            const note = prompt('本人に見えるひとことを書いてください');
-            if (!note?.trim()) return;
-            setBusy(true); await supportDecide(cp.id, note.trim()); setBusy(false); q.onDone();
-          }}>到達と判断する</Button>
-          <Button variant="ghost" disabled={busy} onClick={async () => {
-            const why = prompt('まだ早いと判断した理由');
-            if (!why?.trim()) return;
-            const add = prompt('足すものを1つだけ書いてください');
-            if (!add?.trim()) return;
-            setBusy(true); await hold(cp.id, why.trim(), add.trim()); setBusy(false); q.onDone();
-          }}>まだ早い（理由を書いて保留に）</Button>
-        </div>
-      )}
-    </Card>
+    <div style={{ marginTop: 13, display: 'grid', gap: 9 }}>
+      <Button variant="outline" disabled={busy} onClick={async () => {
+        const note = prompt('本人に見えるひとことを書いてください');
+        if (!note?.trim()) return;
+        setBusy(true); await supportDecide(q.cp.id, note.trim()); setBusy(false); q.onDone();
+      }}>到達と判断する</Button>
+      <Button variant="ghost" disabled={busy} onClick={async () => {
+        const why = prompt('まだ早いと判断した理由');
+        if (!why?.trim()) return;
+        const add = prompt('足すものを1つだけ書いてください');
+        if (!add?.trim()) return;
+        setBusy(true); await hold(q.cp.id, why.trim(), add.trim()); setBusy(false); q.onDone();
+      }}>まだ早い（理由を書いて保留に）</Button>
+    </div>
   );
 }
 
-const Step = (q: { ok: boolean; label: string; sub: string }) => (
-  <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 10, alignItems: 'start' }}>
-    <span style={{ width: 18, height: 18, borderRadius: '50%', display: 'grid',
-                   placeItems: 'center', fontSize: 10, fontWeight: 700, flex: '0 0 auto',
-                   background: q.ok ? c.tealFill : 'transparent', color: '#fff',
-                   border: q.ok ? 0 : `1.5px solid ${c.radioOff}` }}>{q.ok ? '✓' : ''}</span>
-    <span style={{ display: 'grid', gap: 3 }}>
-      <b style={{ fontSize: 12.5, fontWeight: 640 }}>{q.label}</b>
-      <small style={{ fontSize: 11.5, lineHeight: 1.6, color: c.weaker }}>{q.sub}</small>
-    </span>
-  </div>
-);
+// ============================================================
+// 保留中（Staff 6）— 落ちたのではなく、預けてある状態
+// ============================================================
+
+export function Holds(p: { onBack: () => void; nav?: NavSlots }) {
+  const [rows, setRows] = useState<Awaited<ReturnType<typeof holdCards>> | null>(null);
+  const [ask, setAsk] = useState<string | null>(null);
+
+  useEffect(() => { holdCards().then(setRows); }, []);
+
+  const live = (rows ?? []).filter((x) => !x.resolved_at);
+  const done = (rows ?? []).filter((x) => x.resolved_at);
+
+  return (
+    <Screen {...p.nav} bar={<Bar title="保留中" />}
+      footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
+
+      <H>落ちたのではなく、預けてある状態です。</H>
+
+      <Spacer h={18} />
+      {rows === null ? <P>読み込んでいます…</P> : live.length === 0 ? (
+        <Card tone="flat">
+          <Kicker>保留中</Kicker>
+          <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.75, color: c.weak }}>
+            いま預かっているものはありません。
+          </div>
+        </Card>
+      ) : (
+        <div style={{ display: 'grid', gap: 11 }}>
+          {live.map((h) => (
+            <Card key={h.id} tone="warm">
+              <Kicker>{h.cp ? `${h.cp.code} · ${h.cp.title}` : '保留'}</Kicker>
+              <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
+                <div>
+                  <div style={t.field}>Supportの理由</div>
+                  <p style={{ margin: '6px 0 0', fontSize: 13, lineHeight: 1.8,
+                              color: c.warmDeep }}>{h.reason}</p>
+                </div>
+                <div>
+                  <div style={t.field}>足すもの</div>
+                  <p style={{ margin: '6px 0 0', fontSize: 13, lineHeight: 1.8,
+                              color: c.warmDeep }}>{h.add_what}</p>
+                </div>
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <Button variant="ghost" onClick={() =>
+                  setAsk(h.cp ? `${h.cp.code} · ${h.add_what}` : h.add_what)}>
+                  この保留について相談する
+                </Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {done.length > 0 && (
+        <>
+          <Spacer />
+          <Kicker>過去の保留</Kicker>
+          <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+            {done.map((h) => (
+              <Card key={h.id} tone="flat">
+                <div style={{ ...t.small, color: c.weaker }}>
+                  {h.cp ? `${h.cp.code} · ` : ''}{h.add_what}
+                </div>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+
+      <Spacer h={14} />
+      <Card tone="flat">
+        <div style={{ ...t.small, color: c.weak }}>
+          保留の件数・回数は Capability Map にも Journey にも出しません。
+        </div>
+      </Card>
+      <Spacer />
+
+      {ask && <ConsultSheet subject={ask}
+        onClose={() => setAsk(null)} onSent={() => setAsk(null)} />}
+    </Screen>
+  );
+}
 
 const area: React.CSSProperties = {
   width: '100%', minHeight: 74, padding: '13px 15px', borderRadius: r.input,
@@ -372,21 +555,18 @@ export function CapMap(p: { staffId?: string; onBack: () => void ; nav?: NavSlot
 // 受信ボックス
 // ============================================================
 
-export function InboxScreen(p: { onBack: () => void ; nav?: NavSlots}) {
-  const [items, setItems] = useState<Inbox[] | null>(null);
-  const [ns, setNs] = useState<Notice[]>([]);
+export function InboxScreen(p: {
+  onBack: () => void; onOpenRecord?: (id: string) => void; nav?: NavSlots;
+}) {
+  const [items, setItems] = useState<InboxRow[] | null>(null);
   const [trash, setTrash] = useState(false);
+  const [ask, setAsk] = useState<InboxRow | null>(null);   // 相談シート（A の入口1）
 
-  const load = () => { inbox(trash).then(setItems); notices().then(setNs); };
+  const load = () => { inboxRows(trash).then(setItems); };
   useEffect(() => { load(); }, [trash]);
 
-  const label: Record<string, string> = {
-    notice: '通達', os_suggestion: 'Growth OS', nudge: '催促',
-    agreement_request: '同意の依頼', policy_update: '規定の更新', storage_alert: '保存容量',
-  };
-
   return (
-    <Screen {...p.nav} bar={<Bar title="受信" right={trash ? '消去済み' : 'plain'} />}
+    <Screen {...p.nav} bar={<Bar title="受信" right={trash ? '消去済み' : undefined} />}
       footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
 
       <div style={{ marginTop: 20, display: 'flex', gap: 5, padding: 4,
@@ -406,29 +586,40 @@ export function InboxScreen(p: { onBack: () => void ; nav?: NavSlots}) {
             {trash ? '消去済みはありません。' : '受信はありません。'}
           </div></Card>
         ) : items.map((x) => {
-          const n = ns.find((y) => y.id === x.source_id);
+          const unread = !x.read_at && !trash;
           return (
-            <Card key={x.id} tone={!x.read_at && !trash ? 'teal' : 'plain'}>
+            <Card key={x.id} tone={unread ? 'teal' : 'plain'}>
               <div style={{ display: 'flex', alignItems: 'baseline',
                             justifyContent: 'space-between', gap: 10 }}>
-                <span style={{ ...t.field, color: !x.read_at && !trash ? c.tealText : c.label }}>
-                  {label[x.source_kind] ?? x.source_kind}
+                {/* 送信元は9種。第2便 P ／ 第3便 AB の表をそのまま出す */}
+                <span style={{ ...t.field, color: unread ? c.tealText : c.weaker }}>
+                  {x.from}
                 </span>
                 <span style={{ fontSize: 11, color: c.label }}>
                   {trash ? '30日で自動消去' : day(x.created_at)}
                 </span>
               </div>
-              {n && (
-                <>
-                  <div style={{ marginTop: 8, fontSize: 14, fontWeight: 640 }}>{n.title}</div>
-                  <p style={{ margin: '8px 0 0', ...t.small, color: c.weak }}>{n.body}</p>
-                </>
+
+              {x.title && (
+                <div style={{ marginTop: 8, fontSize: 14.5, fontWeight: 640 }}>{x.title}</div>
               )}
-              <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+              {x.body && (
+                <p style={{ margin: '8px 0 0', ...t.small, color: c.weak }}>{x.body}</p>
+              )}
+
+              <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {trash ? (
                   <Button variant="ghost" onClick={async () => { await restore(x.id); load(); }}>戻す</Button>
                 ) : (
                   <>
+                    {/* 返信できるのは「次の問い」だけ。催促を会話にしない（T） */}
+                    {canReply(x.source_kind) && (
+                      <Button variant="outline" onClick={() => setAsk(x)}>返信する</Button>
+                    )}
+                    {x.source_kind === 'record_reply' && p.onOpenRecord && x.source_id && (
+                      <Button variant="outline"
+                        onClick={() => p.onOpenRecord!(x.source_id as string)}>記録を開く</Button>
+                    )}
                     {!x.read_at && (
                       <Button variant="ghost" onClick={async () => { await markRead(x.id); load(); }}>
                         既読にする
@@ -445,7 +636,85 @@ export function InboxScreen(p: { onBack: () => void ; nav?: NavSlots}) {
         })}
       </div>
       <Spacer />
+
+      {ask && (
+        <ConsultSheet subject={ask.title || '次の問い'}
+          onClose={() => setAsk(null)}
+          onSent={async () => { setAsk(null); await markRead(ask.id); load(); }} />
+      )}
     </Screen>
+  );
+}
+
+// ============================================================
+// 相談シート（Staff 7）— 独立した画面ではない。必ず何かに紐づく。
+// title は本人に入力させない。紐づいた先の名前をシステムが入れる。
+// ============================================================
+
+export function ConsultSheet(p: {
+  subject: string; supportId?: string | null;
+  onClose: () => void; onSent: () => void;
+}) {
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [st, setSt] = useState<StoreSettings | null>(null);
+
+  useEffect(() => { storeSettings().then(setSt); }, []);
+
+  // 注記は必ず店舗設定の値と一致させる。ここがずれると、
+  // 「本文はSupportまで」と読んで書いたものがManagementに渡る
+  const note = st?.consultation_visibility === 'full'
+    ? '本文が渡るのは担当のSupportまでです。Management にも本文が渡ります。'
+    : '本文が渡るのは担当のSupportまでです。Management には、相談があったことと傾向だけが渡ります。';
+
+  return (
+    <Sheet onClose={p.onClose}>
+      <h2 style={{ ...t.h2, margin: 0 }}>この1件について、聞きます。</h2>
+
+      <div style={{ marginTop: 16, padding: '13px 15px', borderRadius: r.input,
+                    background: c.flat, fontSize: 11.5, lineHeight: 1.65, color: c.weak }}>
+        <b style={{ fontWeight: 660, color: c.text }}>{p.subject}</b> について
+        <br />担当のSupportに届きます
+      </div>
+
+      <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={6}
+        placeholder="うまく言えなくても、そのまま書いてください。"
+        style={{ width: '100%', marginTop: 14, padding: '13px 15px', borderRadius: r.input,
+                 border: `1px solid ${c.line}`, background: c.input, font: 'inherit',
+                 fontSize: 13, lineHeight: 1.75, color: c.text, outline: 'none',
+                 resize: 'vertical', boxSizing: 'border-box' }} />
+
+      <p style={{ margin: '10px 0 0', fontSize: 12, lineHeight: 1.7, color: c.weaker }}>
+        {note}
+      </p>
+
+      <div style={{ marginTop: 16, display: 'grid', gap: 8 }}>
+        <Button disabled={busy || !body.trim()} onClick={async () => {
+          setBusy(true);
+          const ok = await askAbout({ title: p.subject, body: body.trim(),
+                                      support_id: p.supportId ?? null });
+          setBusy(false);
+          if (ok) p.onSent();
+        }}>送る</Button>
+        <Button variant="ghost" onClick={p.onClose}>やめる</Button>
+      </div>
+    </Sheet>
+  );
+}
+
+// 下から出るシート。画面遷移させない（相談は往復の一部で、目的地ではない）
+export function Sheet(p: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div onClick={p.onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 40, display: 'flex',
+               alignItems: 'flex-end', background: 'rgba(20,20,19,.34)' }}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ width: '100%', maxHeight: '86dvh', overflow: 'auto',
+                 padding: '22px 24px 34px', background: c.bg,
+                 borderRadius: `${r.sheet}px ${r.sheet}px 0 0` }}>
+        {p.children}
+      </div>
+    </div>
   );
 }
 

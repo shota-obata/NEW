@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer , type NavSlots } from '../ui/kit';
 import { c, t, r, serif } from '../ui/tokens';
 import { myHolds } from '../lib/core';
+import { ConsultSheet } from './Core';
 import {
   myRecords, myStore, storeState, createRecord, saveRecord, getRecord,
   listImages, uploadImage, imageUrl, removeImage, share, unshare, viewers,
@@ -171,6 +172,7 @@ export function Practice(p: { id: string | null; storeId: string | null; onBack:
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [viewed, setViewed] = useState<{ at: string; name: string }[]>([]);
+  const [ask, setAsk] = useState(false);
 
   useEffect(() => {
     if (!p.id) return;
@@ -273,6 +275,30 @@ export function Practice(p: { id: string | null; storeId: string | null; onBack:
         })}
       </div>
 
+      {/* Support の返答。ここが本体で、受信ボックスには本文を複製しない（U-2）*/}
+      {rec.support_reply && (
+        <>
+          <Spacer h={16} />
+          <Card tone="teal">
+            <Kicker tone="teal">SUPPORTから · 返答</Kicker>
+            <p style={{ margin: '11px 0 0', fontSize: 13, lineHeight: 1.85, color: c.tealDeep }}>
+              {rec.support_reply}
+            </p>
+            <div style={{ marginTop: 10, fontSize: 11, color: c.weaker }}>
+              {rec.replied_at?.slice(5, 16).replace('T', ' ')}
+            </div>
+          </Card>
+        </>
+      )}
+
+      {/* 相談の入口2。相談は独立した投稿ではなく、この1件に紐づく往復 */}
+      {rec.shared_at && (
+        <>
+          <Spacer h={14} />
+          <Button variant="ghost" onClick={() => setAsk(true)}>この件で相談する</Button>
+        </>
+      )}
+
       {/* 誰がいつ見たか。就業規則 第5条第1項で本人に開示する */}
       <Spacer h={22} />
       <Card tone="flat">
@@ -294,6 +320,9 @@ export function Practice(p: { id: string | null; storeId: string | null; onBack:
         )}
       </Card>
       <Spacer />
+
+      {ask && <ConsultSheet subject={rec.title}
+        onClose={() => setAsk(false)} onSent={() => setAsk(false)} />}
     </Screen>
   );
 }
