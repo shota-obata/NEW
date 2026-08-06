@@ -384,3 +384,45 @@ export async function replyToRecord(record_id: string, body: string) {
   }).eq('id', record_id);
   return !error;
 }
+
+// ---- 共有シート（AC ＋ M-1）----------------------------------------
+// 大きいほう（向かっている先）から小さいほう（どの能力に効いたか）へ。
+// CP は選ばせない — 選択肢は「現在の未到達CP」1件だけで、選ぶ余地がない。
+// 到達済みCPには紐づけられない（済んだ条件に後から記録を足せてしまう）。
+
+export type ShareTargets = { cp: CP | null; params: Param[] };
+
+export async function shareTargets(): Promise<ShareTargets> {
+  const { cp } = await currentCP();
+  const ax = await axes();
+  const all: Param[] = [];
+  for (const a of ax) all.push(...(await params(a.id)));
+  return { cp, params: all };
+}
+
+// 共有を確定する。CP の紐づけと、Map の行への繋がりを一緒に書く。
+// value は動かさない — 動くのは繋がりの本数と status だけ（第2便 M-2）
+export async function shareWith(a: {
+  record_id: string; checkpoint_id: string | null; param_ids: string[]; salon: boolean;
+}) {
+  const { data: u } = await sb.auth.getUser(); if (!u.user) return false;
+
+  await sb.from('practice_records')
+    .update({ checkpoint_id: a.checkpoint_id }).eq('id', a.record_id);
+
+  // 1件の記録が効く先は3つまで（DBのトリガでも弾く）
+  for (const param_id of a.param_ids.slice(0, 3)) {
+    await sb.from('capability_sources').insert({
+      record_id: a.record_id, param_id, staff_id: u.user.id, chosen_by: u.user.id,
+    });
+  }
+
+  const { error } = await sb.from('practice_records').update({
+    shared_at: new Date().toISOString(), salon_shared: a.salon,
+  }).eq('id', a.record_id);
+  return !error;
+}
+
+export const sourcesOf = async (record_id: string) =>
+  ((await sb.from('capability_sources').select('param_id').eq('record_id', record_id))
+    .data ?? []).map((x) => (x as { param_id: string }).param_id);

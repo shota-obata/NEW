@@ -11,6 +11,7 @@ import {
   consults, ask, replyTo, myJourney, supportDecide, hold, axes, params, values, markRead,
   softDelete, restore, postNotice,
   inboxRows, canReply, askAbout, storeSettings, currentCP, cpConditions, holdCards,
+  shareTargets, shareWith, type ShareTargets,
   type Consult, type Journey, type CP, type Axis, type Param, type Val,
   type InboxRow, type StoreSettings, type CondRow,
 } from '../lib/core';
@@ -789,5 +790,129 @@ export function PostNotice(p: { kind: 'support_to_mgmt' | 'mgmt_to_all' | 'mgmt_
       )}
       <Spacer />
     </Screen>
+  );
+}
+
+// ============================================================
+// 共有シート（AC ＋ 第2便 M-1）
+//
+// 上から: 向かっている先（CP） → どの能力に効いたか（Map の行）。
+// CP は選ばせない。既定で入っていて、外せるだけ。
+// 反映先を他人が決めると、Map は他人の評価表になる。確定は本人。
+// ============================================================
+
+export function ShareSheet(p: {
+  recordId: string; onClose: () => void; onShared: (salon: boolean) => void;
+}) {
+  const [tg, setTg] = useState<ShareTargets | null>(null);
+  const [withCp, setWithCp] = useState(true);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [more, setMore] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { shareTargets().then(setTg); }, []);
+
+  const toggle = (id: string) =>
+    setPicked((s) => s.includes(id) ? s.filter((x) => x !== id)
+                   : s.length >= 3 ? s : [...s, id]);
+
+  const nameOf = (id: string) => {
+    const x = tg?.params.find((v) => v.id === id);
+    return x?.name ?? '';
+  };
+
+  const go = async (salon: boolean) => {
+    setBusy(true);
+    const ok = await shareWith({
+      record_id: p.recordId,
+      checkpoint_id: withCp && tg?.cp ? tg.cp.id : null,
+      param_ids: picked, salon,
+    });
+    setBusy(false);
+    if (ok) p.onShared(salon);
+  };
+
+  return (
+    <Sheet onClose={p.onClose}>
+      <h2 style={{ ...t.h2, margin: 0 }}>この記録は、どこに効きましたか。</h2>
+
+      {/* ---- 向かっている先。未到達CPが無いときは出さない ---- */}
+      {tg?.cp && (
+        <button onClick={() => setWithCp((v) => !v)}
+          style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
+                   marginTop: 18, padding: '14px 16px', borderRadius: 14,
+                   background: withCp ? c.tealBg : c.flat,
+                   border: `1px solid ${withCp ? c.tealLine : c.cardLine}` }}>
+          <div style={{ ...t.kicker, color: withCp ? c.tealText : c.label }}>向かっている先</div>
+          <div style={{ marginTop: 9, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <b style={{ flex: 1, fontSize: 14, fontWeight: 640,
+                        color: withCp ? c.tealDeep : c.weak }}>
+              {tg.cp.code} · {tg.cp.title}
+            </b>
+            <span style={{ width: 20, height: 20, borderRadius: '50%', flex: '0 0 auto',
+                           display: 'grid', placeItems: 'center', fontSize: 11,
+                           fontWeight: 700, color: '#fff',
+                           background: withCp ? c.tealFill : 'transparent',
+                           border: withCp ? 0 : `1.5px solid ${c.toggleOff}` }}>
+              {withCp ? '✓' : ''}
+            </span>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.65, color: c.weak }}>
+            {withCp
+              ? <>紐づけると、この記録は <b style={{ fontWeight: 660 }}>{tg.cp.code} の条件に数えられます。</b></>
+              : 'どの Checkpoint にも紐づけません。この記録は残ります。'}
+          </div>
+        </button>
+      )}
+
+      {/* ---- どの能力に効いたか ---- */}
+      <div style={{ marginTop: 18 }}>
+        <Kicker>効いたところ（3つまで）</Kicker>
+        <div style={{ marginTop: 11, display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+          {picked.map((id) => (
+            <button key={id} onClick={() => toggle(id)}
+              style={{ padding: '8px 12px', borderRadius: r.pill, cursor: 'pointer',
+                       font: 'inherit', fontSize: 11.5, fontWeight: 700, color: c.tealText,
+                       background: c.tealBg, border: `1px solid ${c.teal}` }}>
+              {nameOf(id)} ×
+            </button>
+          ))}
+          {picked.length < 3 && (
+            <button onClick={() => setMore((v) => !v)}
+              style={{ padding: '8px 12px', borderRadius: r.pill, cursor: 'pointer',
+                       font: 'inherit', fontSize: 11.5, fontWeight: 700, color: c.weak,
+                       background: 'transparent', border: `1.5px dashed ${c.dash}` }}>
+              ＋ 行から選ぶ
+            </button>
+          )}
+        </div>
+
+        {more && (
+          <div style={{ marginTop: 11, display: 'grid', gap: 7,
+                        maxHeight: 210, overflow: 'auto' }}>
+            {(tg?.params ?? []).filter((x) => !picked.includes(x.id)).map((x) => (
+              <button key={x.id} onClick={() => { toggle(x.id); setMore(false); }}
+                style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
+                         padding: '11px 14px', borderRadius: r.input, fontSize: 13,
+                         background: c.card, border: `1px solid ${c.cardLine}` }}>
+                {x.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <p style={{ margin: '14px 0 0', fontSize: 12, lineHeight: 1.7, color: c.weaker }}>
+        ここは担当のSupportが書き換えません。あとから変えられます。
+      </p>
+
+      <div style={{ marginTop: 16, display: 'grid', gap: 8 }}>
+        <Button disabled={busy} onClick={() => go(false)}>共有する</Button>
+        <Button variant="outline" disabled={busy} onClick={() => go(true)}>
+          サロンにも出す（氏名なし）
+        </Button>
+        <Button variant="ghost" onClick={p.onClose}>やめる</Button>
+      </div>
+    </Sheet>
   );
 }

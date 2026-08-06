@@ -7,10 +7,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer , type NavSlots } from '../ui/kit';
 import { c, t, r, serif } from '../ui/tokens';
 import { myHolds } from '../lib/core';
-import { ConsultSheet } from './Core';
+import { ConsultSheet, ShareSheet } from './Core';
 import {
   myRecords, myStore, storeState, createRecord, saveRecord, getRecord,
-  listImages, uploadImage, imageUrl, removeImage, share, unshare, viewers,
+  listImages, uploadImage, imageUrl, removeImage, unshare, viewers,
   type Record_, type Img,
 } from '../lib/staff';
 
@@ -169,10 +169,11 @@ export function Practice(p: { id: string | null; storeId: string | null; onBack:
   const [title, setTitle] = useState('');
   const [imgs, setImgs] = useState<Img[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
+  const [busy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [viewed, setViewed] = useState<{ at: string; name: string }[]>([]);
   const [ask, setAsk] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     if (!p.id) return;
@@ -212,14 +213,10 @@ export function Practice(p: { id: string | null; storeId: string | null; onBack:
             }}>共有をやめる</Button>
           ) : (
             <>
-              <Button disabled={busy} onClick={async () => {
-                setBusy(true); await share(rec.id, false); setBusy(false);
-                setRec({ ...rec, shared_at: new Date().toISOString() });
-              }}>担当のSupportに共有する</Button>
-              <Button variant="ghost" disabled={busy} onClick={async () => {
-                setBusy(true); await share(rec.id, true); setBusy(false);
-                setRec({ ...rec, shared_at: new Date().toISOString(), salon_shared: true });
-              }}>サロンにも出す（氏名なしで共有）</Button>
+              <Button disabled={busy} onClick={() => setSharing(true)}>
+                担当のSupportに共有する
+              </Button>
+
             </>
           )}
           <Button variant="ghost" onClick={p.onBack}>戻る</Button>
@@ -323,6 +320,9 @@ export function Practice(p: { id: string | null; storeId: string | null; onBack:
 
       {ask && <ConsultSheet subject={rec.title}
         onClose={() => setAsk(false)} onSent={() => setAsk(false)} />}
+      {sharing && <ShareSheet recordId={rec.id} onClose={() => setSharing(false)}
+        onShared={(salon) => { setSharing(false);
+          setRec({ ...rec, shared_at: new Date().toISOString(), salon_shared: salon }); }} />}
     </Screen>
   );
 }
