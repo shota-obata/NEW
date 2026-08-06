@@ -4,11 +4,13 @@
 // 初日は本当に0件なので、0件のときに何をすればいいかだけを示す。
 
 import { useEffect, useRef, useState } from 'react';
-import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer } from '../ui/kit';
+import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer , type NavSlots } from '../ui/kit';
 import { c, t, r, serif } from '../ui/tokens';
+import { myHolds } from '../lib/core';
+import { ConsultSheet, ShareSheet } from './Core';
 import {
   myRecords, myStore, storeState, createRecord, saveRecord, getRecord,
-  listImages, uploadImage, imageUrl, removeImage, share, unshare, viewers,
+  listImages, uploadImage, imageUrl, removeImage, unshare, viewers,
   type Record_, type Img,
 } from '../lib/staff';
 
@@ -20,12 +22,15 @@ const md = (s: string) => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
 // ============================================================
 
 export function Home(p: { name: string | null; onOpen: (id: string) => void; onNew: () => void;
-                          onSettings: () => void }) {
+                          onSettings: () => void; onHolds: () => void;
+                          nav?: NavSlots }) {
   const [recs, setRecs] = useState<Record_[] | null>(null);
   const [st, setSt] = useState<{ open: boolean; closedDay: boolean } | null>(null);
+  const [hd, setHd] = useState<{ id: string; reason: string; add_what: string }[]>([]);
 
   useEffect(() => {
     myRecords(5).then(setRecs);
+    myHolds().then(setHd);
     myStore().then((s) => s && storeState(s.id).then(setSt));
   }, []);
 
@@ -33,7 +38,7 @@ export function Home(p: { name: string | null; onOpen: (id: string) => void; onN
   const drafts = recs?.filter((x) => !x.shared_at) ?? [];
 
   return (
-    <Screen bar={<Bar title="Home" right={p.name ? `${p.name} · ${md(today())}` : undefined} />}
+    <Screen {...p.nav} bar={<Bar title="Home" right={p.name ? `${p.name} · ${md(today())}` : undefined} />}
       footer={<Button onClick={p.onNew}>記録を書く</Button>}>
 
       {/* 定休日・時間外は、義務ではないことを先に伝える */}
@@ -107,6 +112,28 @@ export function Home(p: { name: string | null; onOpen: (id: string) => void; onN
         </>
       )}
 
+      {/* 保留中。0件でも消さない。
+          消すと、保留になった瞬間に新しい箱が生えることになり、
+          「落ちた」ように見える。預けてある状態が常にそこにある形にする。 */}
+      <Spacer />
+      <button onClick={p.onHolds}
+        style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
+                 padding: '15px 17px', borderRadius: r.card,
+                 background: c.flat, border: `1px solid ${c.cardLine}` }}>
+        <div style={{ display: 'flex', alignItems: 'baseline',
+                      justifyContent: 'space-between', gap: 10 }}>
+          <b style={{ fontSize: 13.5, fontWeight: 640 }}>保留中</b>
+          <span style={{ fontSize: 11, color: c.label }}>
+            {hd.length === 0 ? 'いまはありません' : `${hd.length} 件`}
+          </span>
+        </div>
+        <div style={{ marginTop: 6, fontSize: 11.5, lineHeight: 1.7, color: c.weaker }}>
+          {hd.length === 0
+            ? '「まだ早い」と預かったものは、ここに置かれます。'
+            : hd[0].add_what}
+        </div>
+      </button>
+
       {/* 一度読めば済むもの・たまにしか使わないものは設定へ。
           日常の画面に置くと、それ自体が判断になる（10c と同じ考え方） */}
       <Spacer />
@@ -137,14 +164,16 @@ const FIELDS: [keyof Record_, string, string][] = [
   ['next_gain', '次回への経験値の貯め方', '骨格タイプ別に、角度で合わせる手順を1つ作る'],
 ];
 
-export function Practice(p: { id: string | null; storeId: string | null; onBack: () => void }) {
+export function Practice(p: { id: string | null; storeId: string | null; onBack: () => void ; nav?: NavSlots}) {
   const [rec, setRec] = useState<Record_ | null>(null);
   const [title, setTitle] = useState('');
   const [imgs, setImgs] = useState<Img[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
+  const [busy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [viewed, setViewed] = useState<{ at: string; name: string }[]>([]);
+  const [ask, setAsk] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     if (!p.id) return;
@@ -166,7 +195,7 @@ export function Practice(p: { id: string | null; storeId: string | null; onBack:
   );
 
   if (!rec) return (
-    <Screen bar={<Bar title="Practice記録" />}><Spacer h={30} /><P>読み込んでいます…</P></Screen>
+    <Screen {...p.nav} bar={<Bar title="Practice記録" />}><Spacer h={30} /><P>読み込んでいます…</P></Screen>
   );
 
   const patch = async (k: keyof Record_, v: string) => {
@@ -175,7 +204,7 @@ export function Practice(p: { id: string | null; storeId: string | null; onBack:
   };
 
   return (
-    <Screen bar={<Bar title="Practice記録" right={rec.shared_at ? '共有済み' : '下書き'} />}
+    <Screen {...p.nav} bar={<Bar title="Practice記録" right={rec.shared_at ? '共有済み' : '下書き'} />}
       footer={
         <div style={{ display: 'grid', gap: 9 }}>
           {rec.shared_at ? (
@@ -184,14 +213,10 @@ export function Practice(p: { id: string | null; storeId: string | null; onBack:
             }}>共有をやめる</Button>
           ) : (
             <>
-              <Button disabled={busy} onClick={async () => {
-                setBusy(true); await share(rec.id, false); setBusy(false);
-                setRec({ ...rec, shared_at: new Date().toISOString() });
-              }}>担当のSupportに共有する</Button>
-              <Button variant="ghost" disabled={busy} onClick={async () => {
-                setBusy(true); await share(rec.id, true); setBusy(false);
-                setRec({ ...rec, shared_at: new Date().toISOString(), salon_shared: true });
-              }}>サロンにも出す（氏名なしで共有）</Button>
+              <Button disabled={busy} onClick={() => setSharing(true)}>
+                担当のSupportに共有する
+              </Button>
+
             </>
           )}
           <Button variant="ghost" onClick={p.onBack}>戻る</Button>
@@ -247,6 +272,30 @@ export function Practice(p: { id: string | null; storeId: string | null; onBack:
         })}
       </div>
 
+      {/* Support の返答。ここが本体で、受信ボックスには本文を複製しない（U-2）*/}
+      {rec.support_reply && (
+        <>
+          <Spacer h={16} />
+          <Card tone="teal">
+            <Kicker tone="teal">SUPPORTから · 返答</Kicker>
+            <p style={{ margin: '11px 0 0', fontSize: 13, lineHeight: 1.85, color: c.tealDeep }}>
+              {rec.support_reply}
+            </p>
+            <div style={{ marginTop: 10, fontSize: 11, color: c.weaker }}>
+              {rec.replied_at?.slice(5, 16).replace('T', ' ')}
+            </div>
+          </Card>
+        </>
+      )}
+
+      {/* 相談の入口2。相談は独立した投稿ではなく、この1件に紐づく往復 */}
+      {rec.shared_at && (
+        <>
+          <Spacer h={14} />
+          <Button variant="ghost" onClick={() => setAsk(true)}>この件で相談する</Button>
+        </>
+      )}
+
       {/* 誰がいつ見たか。就業規則 第5条第1項で本人に開示する */}
       <Spacer h={22} />
       <Card tone="flat">
@@ -268,6 +317,12 @@ export function Practice(p: { id: string | null; storeId: string | null; onBack:
         )}
       </Card>
       <Spacer />
+
+      {ask && <ConsultSheet subject={rec.title}
+        onClose={() => setAsk(false)} onSent={() => setAsk(false)} />}
+      {sharing && <ShareSheet recordId={rec.id} onClose={() => setSharing(false)}
+        onShared={(salon) => { setSharing(false);
+          setRec({ ...rec, shared_at: new Date().toISOString(), salon_shared: salon }); }} />}
     </Screen>
   );
 }

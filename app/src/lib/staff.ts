@@ -8,6 +8,7 @@ import { sb } from './api';
 // ---- 型 ---------------------------------------------------------------
 
 export type Record_ = {
+  support_reply?: string | null; replied_at?: string | null; replied_by?: string | null;
   id: string;
   recorded_on: string;
   title: string;

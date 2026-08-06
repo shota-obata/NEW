@@ -7,19 +7,28 @@ import { c, t, r, h, sans, press } from './tokens';
 // ---- 画面の枠 --------------------------------------------------------
 // ヘッダー 54/24/14 ＋ 下罫線、本文 0/24/22 スクロール、フッター 12/24 ＋ 上罫線
 
-export function Screen(p: { bar: ReactNode; children: ReactNode; footer?: ReactNode }) {
+export type NavSlots = { nav?: ReactNode; tabs?: ReactNode };
+
+export function Screen(p: { bar: ReactNode; children: ReactNode; footer?: ReactNode }
+                        & NavSlots) {
   return (
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column',
                   background: c.bg, color: c.text, font: `14px ${sans}`,
                   letterSpacing: '-.006em' }}>
       <div style={{ flexShrink: 0, padding: '54px 24px 14px',
                     borderBottom: `1px solid ${c.line}` }}>{p.bar}</div>
+      {/* Support / Management のナビはヘッダー下。Staff だけ下部タブバー（フッター側）*/}
+      {p.nav && <div style={{ flexShrink: 0, padding: '10px 24px 0' }}>{p.nav}</div>}
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '0 24px 22px' }}>
         {p.children}
       </div>
       {p.footer && (
         <div style={{ flexShrink: 0, padding: '12px 24px',
                       borderTop: `1px solid ${c.line}`, background: c.bg }}>{p.footer}</div>
+      )}
+      {p.tabs && (
+        <div style={{ flexShrink: 0, background: c.bg,
+                      borderTop: `1px solid ${c.line}` }}>{p.tabs}</div>
       )}
     </div>
   );
@@ -161,3 +170,59 @@ export const Warn = (p: { children: ReactNode }) => (
 );
 
 export const Spacer = (p: { h?: number }) => <div style={{ height: p.h ?? 20 }} />;
+
+
+// ---- ナビ ------------------------------------------------------------
+// 役割で配置も形も変えている。同じ形にすると、権限の違いが見えなくなる。
+//   Staff      下部タブバー（親指の届く位置。日常的に行き来する）
+//   Support    ヘッダー下の淡いピル（判断の合間に開く）
+//   Management ヘッダー下の濃色バー（項目が多く、日常の道具ではない）
+
+export type Item = [key: string, label: string];
+
+export const TabBar = (p: { items: Item[]; at: string; onGo: (k: string) => void }) => (
+  <div style={{ display: 'flex', gap: 2, padding: '10px 20px 34px' }}>
+    {p.items.map(([k, label]) => (
+      <button key={k} onClick={() => p.onGo(k)}
+        style={{ flex: 1, minHeight: h.nav, border: 0, background: 'transparent',
+                 cursor: 'pointer', font: 'inherit', fontSize: 10.5,
+                 letterSpacing: '-.01em', transition: press,
+                 fontWeight: p.at === k ? 700 : 600,
+                 color: p.at === k ? c.tealText : c.weaker }}>
+        {label}
+      </button>
+    ))}
+  </div>
+);
+
+export const Pills = (p: { items: Item[]; at: string; onGo: (k: string) => void }) => (
+  <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+    {p.items.map(([k, label]) => (
+      <button key={k} onClick={() => p.onGo(k)}
+        style={{ flex: '0 0 auto', height: h.nav, padding: '0 14px', borderRadius: r.pill,
+                 cursor: 'pointer', font: 'inherit', fontSize: 11.5, fontWeight: 700,
+                 transition: press,
+                 background: p.at === k ? c.tealBg : 'transparent',
+                 border: `1px solid ${p.at === k ? c.teal : c.line}`,
+                 color: p.at === k ? c.tealText : c.weaker }}>
+        {label}
+      </button>
+    ))}
+  </div>
+);
+
+export const MgmtNav = (p: { items: Item[]; at: string; onGo: (k: string) => void }) => (
+  <div style={{ display: 'flex', gap: 3, padding: 5, borderRadius: 12,
+                background: c.mgmtNav, overflowX: 'auto' }}>
+    {p.items.map(([k, label]) => (
+      <button key={k} onClick={() => p.onGo(k)}
+        style={{ flex: '0 0 auto', height: 30, padding: '0 11px', borderRadius: 8,
+                 border: 0, cursor: 'pointer', font: 'inherit', fontSize: 11,
+                 fontWeight: 700, whiteSpace: 'nowrap', transition: press,
+                 background: p.at === k ? c.teal : 'transparent',
+                 color: p.at === k ? '#fff' : c.label }}>
+        {label}
+      </button>
+    ))}
+  </div>
+);

@@ -4,7 +4,7 @@
 // 日常の画面（Home）に置かない — 目の前にあると、それ自体が判断になる。
 
 import { useEffect, useState } from 'react';
-import { Screen, Bar, H, P, Card, Kicker, Button, Spacer } from '../ui/kit';
+import { Screen, Bar, H, P, Card, Kicker, Button, Spacer , type NavSlots } from '../ui/kit';
 import { c, t, r } from '../ui/tokens';
 import { getProfile, saveProfile, yearsSince, type Profile } from '../lib/staff';
 
@@ -12,6 +12,7 @@ export function Settings(p: {
   name: string | null; personCode: string | null;
   onPolicy: () => void; onSignOut: () => void; onBack: () => void;
   onDevices?: () => void;
+  nav?: NavSlots;
 }) {
   const [pf, setPf] = useState<Profile | null>(null);
   const [saved, setSaved] = useState(false);
@@ -28,7 +29,7 @@ export function Settings(p: {
   const years = yearsSince(pf?.experience_started_on ?? null);
 
   return (
-    <Screen bar={<Bar title="設定" right={saved ? '保存しました' : (p.personCode ?? undefined)} />}
+    <Screen {...p.nav} bar={<Bar title="設定" right={saved ? '保存しました' : (p.personCode ?? undefined)} />}
       footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
 
       <H>{p.name ?? 'あなた'}</H>

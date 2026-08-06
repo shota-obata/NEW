@@ -39,6 +39,15 @@ export async function markViewed(record_id: string) {
     .select();   // 既に見ていれば unique 制約で弾かれる。それでよい
 }
 
+// 自分が開いた記録のid。未読の判定に使う（未読＝まだ開いていない）
+export async function myViewed(): Promise<string[]> {
+  const { data: u } = await sb.auth.getUser();
+  if (!u.user) return [];
+  const { data } = await sb.from('record_views')
+    .select('record_id').eq('viewer_id', u.user.id);
+  return (data ?? []).map((x) => (x as { record_id: string }).record_id);
+}
+
 // 相談への返答。Management には本文が渡らない（v_consultation_trend は
 // body / reply_body の列を持たない）
 export type Consultation = {
@@ -56,4 +65,70 @@ export async function reply(id: string, body: string) {
   const { error } = await sb.from('consultations')
     .update({ reply_body: body, replied_at: new Date().toISOString() }).eq('id', id);
   return !error;
+}
+
+// ---- 要対応（第1便 F-3）------------------------------------------------
+// 条件は3つの OR。平均レスポンスは入れない —
+// あれは Management が設計を直すための数字で、Support 自身を追い立てるものではない。
+
+export type Attention = {
+  staff: Staff; scope: string;
+  unreplied: number;      // 未返答の相談
+  stalled: string | null; // 2段目が3営業日止まっているCPの code
+  unread: number;         // 共有された記録の未読
+};
+
+const BIZ_DAY_MS = 86400000;
+
+export async function attention(): Promise<Attention[]> {
+  const { data: u } = await sb.auth.getUser();
+  if (!u.user) return [];
+
+  const { data: asg } = await sb.from('assignments')
+    .select('staff_id, scope, users:staff_id(id, person_code, display_name)')
+    .eq('support_id', u.user.id).eq('active', true);
+
+  const rows = (asg ?? []) as unknown as
+    { staff_id: string; scope: string; users: Staff | null }[];
+
+  const [cons, recs, seen] = await Promise.all([
+    consultations(),
+    sharedRecords(),
+    myViewed(),
+  ]);
+
+  // 2段目が止まっているCP。1段目通過から3営業日（定休の火曜を除いて数える）
+  const { data: cps } = await sb.from('checkpoints')
+    .select('code, os_passed_at, support_decided_at, journey_id, journeys:journey_id(staff_id)')
+    .not('os_passed_at', 'is', null).is('support_decided_at', null);
+
+  const stalledOf = (staffId: string) => {
+    const hit = ((cps ?? []) as unknown as
+      { code: string; os_passed_at: string; journeys: { staff_id: string } | null }[])
+      .find((x) => x.journeys?.staff_id === staffId);
+    if (!hit) return null;
+    return bizDays(new Date(hit.os_passed_at), new Date()) >= 3 ? hit.code : null;
+  };
+
+  return rows.filter((r) => r.users).map((r) => ({
+    staff: r.users as Staff,
+    scope: r.scope,
+    unreplied: cons.filter((x) => x.staff_id === r.staff_id && !x.replied_at).length,
+    stalled: stalledOf(r.staff_id),
+    unread: recs.filter((x) => x.staff_id === r.staff_id && !seen.includes(x.id)).length,
+  }));
+}
+
+export const needsAction = (a: Attention) =>
+  a.unreplied > 0 || !!a.stalled || a.unread > 0;
+
+// 営業日で数える。火曜は定休なので飛ばす（DATA_MODEL の営業時間）
+export function bizDays(from: Date, to: Date): number {
+  let n = 0;
+  const d = new Date(from);
+  while (d < to) {
+    d.setTime(d.getTime() + BIZ_DAY_MS);
+    if (d.getDay() !== 2) n++;   // 2 = 火曜
+  }
+  return n;
 }
