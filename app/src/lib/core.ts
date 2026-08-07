@@ -426,3 +426,19 @@ export async function shareWith(a: {
 export const sourcesOf = async (record_id: string) =>
   ((await sb.from('capability_sources').select('param_id').eq('record_id', record_id))
     .data ?? []).map((x) => (x as { param_id: string }).param_id);
+
+// ---- Vision と現在地（第5便 AL）-------------------------------------
+// どこへ行きたいかは本人が書き、いまどこにいるかは他人が書く。
+// 現在地は自分では見えにくいもので、逆にすると評価面談になる。
+// 列ごとの権限は DB のトリガが守っている。
+
+export async function setVision(journey_id: string, vision: string) {
+  const { error } = await sb.from('journeys').update({ vision }).eq('id', journey_id);
+  return !error;
+}
+
+export async function setCurrentPosition(journey_id: string, current_position: string) {
+  const { error } = await sb.from('journeys')
+    .update({ current_position }).eq('id', journey_id);
+  return !error;
+}

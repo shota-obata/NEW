@@ -11,7 +11,7 @@ import {
   consults, ask, replyTo, myJourney, supportDecide, hold, axes, params, values, markRead,
   softDelete, restore, postNotice,
   inboxRows, canReply, askAbout, storeSettings, currentCP, cpConditions, holdCards,
-  shareTargets, shareWith, type ShareTargets,
+  shareTargets, shareWith, setVision, type ShareTargets,
   type Consult, type Journey, type CP, type Axis, type Param, type Val,
   type InboxRow, type StoreSettings, type CondRow,
 } from '../lib/core';
@@ -457,8 +457,14 @@ export function CapMap(p: { staffId?: string; onBack: () => void ; nav?: NavSlot
   const [tab, setTab] = useState<'area' | 'step'>('area');
   const [ps, setPs] = useState<Param[]>([]);
   const [vs, setVs] = useState<Val[]>([]);
+  const [j, setJ] = useState<Journey | null>(null);
+  const [vision, setVis] = useState('');
 
-  useEffect(() => { axes().then(setAx); values(p.staffId).then(setVs); }, [p.staffId]);
+  useEffect(() => {
+    axes().then(setAx);
+    values(p.staffId).then(setVs);
+    myJourney(p.staffId).then((x) => { setJ(x); setVis(x?.vision ?? ''); });
+  }, [p.staffId]);
   useEffect(() => {
     const a = ax.find((x) => x.code === tab); if (a) params(a.id).then(setPs);
   }, [ax, tab]);
@@ -526,6 +532,36 @@ export function CapMap(p: { staffId?: string; onBack: () => void ; nav?: NavSlot
   return (
     <Screen {...p.nav} bar={<Bar title="Capability Map" right="点数ではありません" />}
       footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
+
+      {/* どこへ行きたいかは本人が書く。いまどこにいるかは Support が書く。
+          現在地は自分では見えにくい。逆にすると評価面談になる */}
+      <Spacer h={18} />
+      <label style={{ display: 'grid', gap: 7 }}>
+        <span style={t.field}>どこへ向かっていますか</span>
+        <textarea value={vision} onChange={(e) => setVis(e.target.value)}
+          readOnly={!!p.staffId}
+          onBlur={() => { if (!p.staffId && j && vision.trim()) setVision(j.id, vision.trim()); }}
+          placeholder="骨格が違っても、同じ基準で似合わせを説明できる"
+          style={{ width: '100%', minHeight: 68, padding: '13px 15px', borderRadius: r.input,
+                   border: `1px solid ${c.line}`, background: c.input, font: 'inherit',
+                   fontSize: 13, lineHeight: 1.8, color: c.text, outline: 'none',
+                   resize: 'vertical', boxSizing: 'border-box' }} />
+      </label>
+
+      {j?.current_position && (
+        <>
+          <Spacer h={12} />
+          <Card tone="flat">
+            <Kicker>いまの現在地</Kicker>
+            <p style={{ margin: '9px 0 0', fontSize: 13, lineHeight: 1.85, color: c.weak }}>
+              {j.current_position}
+            </p>
+            <div style={{ marginTop: 9, fontSize: 11, lineHeight: 1.7, color: c.weaker }}>
+              ここは担当のSupportが書きます。現在地は、自分では見えにくいものだからです。
+            </div>
+          </Card>
+        </>
+      )}
 
       <div style={{ marginTop: 20, display: 'flex', gap: 8 }}>
         {(['area', 'step'] as const).map((k) => (
