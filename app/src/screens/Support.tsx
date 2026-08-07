@@ -9,7 +9,8 @@ import { Screen, Bar, H, P, Card, Kicker, Button, Spacer, type NavSlots } from '
 import { c, t, r } from '../ui/tokens';
 import { assignedStaff, sharedRecords, markViewed, myViewed, attention, needsAction,
          type Staff, type Attention } from '../lib/support';
-import { storeSettings, type StoreSettings } from '../lib/core';
+import { storeSettings, myJourney, setCurrentPosition,
+         type StoreSettings, type Journey } from '../lib/core';
 import { consultations, type Consultation } from '../lib/support';
 import { listImages, imageUrl, viewers, type Record_, type Img } from '../lib/staff';
 import { replyToRecord } from '../lib/core';
@@ -420,8 +421,11 @@ export function StaffDetail(p: {
   const [att, setAtt] = useState<Attention | null>(null);
   const [recs, setRecs] = useState<(Record_ & { staff_id: string })[]>([]);
   const [cons, setCons] = useState<Consultation[]>([]);
+  const [j, setJ] = useState<Journey | null>(null);
+  const [pos, setPos] = useState('');
 
   useEffect(() => {
+    myJourney(p.staffId).then((x) => { setJ(x); setPos(x?.current_position ?? ''); });
     attention().then((xs) => setAtt(xs.find((x) => x.staff.id === p.staffId) ?? null));
     sharedRecords().then((xs) => setRecs(xs.filter((x) => x.staff_id === p.staffId)));
     consultations().then((xs) => setCons(xs.filter((x) => x.staff_id === p.staffId)));
@@ -463,6 +467,28 @@ export function StaffDetail(p: {
           </Card>
         </>
       )}
+
+      {/* 現在地。書けるのは担当のSupportだけ（第5便 AL）。
+          どこへ行きたいかは本人が書く（Vision は Map の最上部）。
+          現在地は自分では見えにくいので、他人が書く */}
+      <Spacer />
+      <Kicker>いまの現在地</Kicker>
+      <div style={{ marginTop: 12 }}>
+        <textarea value={pos} onChange={(e) => setPos(e.target.value)}
+          onBlur={() => { if (j && pos.trim() !== (j.current_position ?? '')) {
+            setCurrentPosition(j.id, pos.trim()); } }}
+          placeholder="基準点を位置で覚えている段階"
+          style={{ width: '100%', minHeight: 68, padding: '13px 15px', borderRadius: r.input,
+                   border: `1px solid ${c.line}`, background: c.input, font: 'inherit',
+                   fontSize: 13, lineHeight: 1.8, color: c.text, outline: 'none',
+                   resize: 'vertical', boxSizing: 'border-box' }} />
+        <div style={{ marginTop: 9, ...t.small, color: c.weaker }}>
+          本人の Capability Map に、そのまま出ます。
+          {j?.vision
+            ? <> 本人が書いた向かう先は「{j.vision}」です。</>
+            : <> 本人はまだ向かう先を書いていません。</>}
+        </div>
+      </div>
 
       {/* 相談。担当分は本文まで */}
       <Spacer />
