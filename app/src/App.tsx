@@ -13,7 +13,7 @@ import { Home, Practice } from './screens/Staff';
 import { Settings } from './screens/Settings';
 import { SupportHome, SharedRecord, StaffList, StaffDetail } from './screens/Support';
 import { MgmtHome, Quality, Devices, Design, StoreSettingsScreen,
-         ViewLock, PolicyNudge, BusinessHours, Retirement } from './screens/Mgmt';
+         ViewLock, PolicyNudge, BusinessHours, Retirement, Individual } from './screens/Mgmt';
 import { JourneyScreen, CapMap, InboxScreen, PostNotice, Holds,
          NewCheckpoint, NextQuestion } from './screens/Core';
 import { RoleSwitch } from './screens/Role';
@@ -154,7 +154,14 @@ export function App() {
       <Design nav={bar} onQuality={() => go('view')} onBack={home} />
     );
     if (nav === 'devices') return <Devices nav={bar} onBack={home} />;
-    if (nav === 'notice') return <PostNotice kind="mgmt_to_all" nav={bar} onBack={home} />;
+    if (nav === 'notice') {
+      // 全体通達と個別通達。宛先を絞れるのは個別だけ
+      if (sub === 'one') return <Individual nav={bar} onBack={() => setSub(null)} />;
+      return (
+        <PostNotice kind="mgmt_to_all" nav={bar}
+          onIndividual={() => setSub('one')} onBack={home} />
+      );
+    }
     if (nav === 'settings') {
       if (sub === 'hours') return <BusinessHours nav={bar} onBack={() => setSub(null)} />;
       if (sub === 'retire') return <Retirement nav={bar} onBack={() => setSub(null)} />;

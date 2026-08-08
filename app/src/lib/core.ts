@@ -548,3 +548,31 @@ export async function deliverQuestion(a: {
   }).eq('id', a.id);
   return !error;
 }
+
+// ---- Capability Map に行を足す（第4便 AD）---------------------------
+// 店舗共通の骨格（Management）＋ 個人の行（本人）の2層。
+// 本人が足したものは、その人の Map にだけ増える。
+
+export const SOURCE_LABEL: Record<string, string> = {
+  practice_record:  'Practice記録',
+  record_images:    'before / after の画像',
+  cp_reached:       'Checkpoint の到達',
+  support_review:   'Support の確認',
+  initial_estimate: '初期値',
+};
+
+export function sourcePreview(name: string, srcs: string[]): string {
+  if (!name.trim()) return '名称を入れてください。';
+  if (srcs.length === 0) return 'ソースを1つ以上選んでください。';
+  return `「${name.trim()}」は、${srcs.map((s) => SOURCE_LABEL[s]).join('、')}から見ます。`;
+}
+
+export async function addParam(a: { axis_id: string; name: string; sources: string[] }) {
+  const { data: u } = await sb.auth.getUser(); if (!u.user) return false;
+  const { error } = await sb.from('capability_params').insert({
+    axis_id: a.axis_id, name: a.name.trim(), sources: a.sources,
+    owner_user_id: u.user.id,        // 自分の Map にだけ増える
+    sort_order: 99,
+  });
+  return !error;
+}
