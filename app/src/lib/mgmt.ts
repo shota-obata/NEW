@@ -404,3 +404,80 @@ export async function cancelDeletion(id: string) {
   }).eq('id', id);
   return !error;
 }
+
+// ---- 個別通達に添える数字（第2便 R）----------------------------------
+// 5つだけ。上限2つ — 3つ以上並べると通達が査定表になる。
+// 個々の返答文・相談本文は入れられない（列の形として持たない）。
+
+export type MetricKey = 'avg_response_days' | 'unanswered_consultations'
+                      | 'cp_stall_days' | 'assigned_staff' | 'secured_hours';
+
+export const METRICS: { key: MetricKey; label: string; unit: string }[] = [
+  { key: 'avg_response_days',        label: '平均レスポンス',   unit: '日' },
+  { key: 'unanswered_consultations', label: '未返答の相談',     unit: '件' },
+  { key: 'cp_stall_days',            label: 'CP判断の滞留',     unit: '日' },
+  { key: 'assigned_staff',           label: '担当人数',         unit: '名' },
+  { key: 'secured_hours',            label: '確保している時間', unit: 'h/週' },
+];
+
+export type Metric = {
+  key: MetricKey; label: string; value: number; unit: string;
+  baseline: number | null; period: string;
+};
+
+const ym = () => new Date().toISOString().slice(0, 7);
+
+// その Support の実測値を引く。渡せるのは数字だけ
+export async function metricsFor(support_id: string): Promise<Metric[]> {
+  const st = await storeSettings();
+  const base = st?.response_baseline_days ?? 1.0;
+
+  const q = (await supportQuality()).find((x) => x.support_id === support_id);
+  const { count: unans } = await sb.from('consultations')
+    .select('id', { count: 'exact', head: true })
+    .eq('support_id', support_id).is('replied_at', null);
+  const { count: staff } = await sb.from('assignments')
+    .select('id', { count: 'exact', head: true })
+    .eq('support_id', support_id).eq('active', true);
+
+  const slots = await slotsOfWeek();
+  const { data: asg } = await sb.from('assignments')
+    .select('staff_id').eq('support_id', support_id).eq('active', true);
+  const mine = ((asg ?? []) as { staff_id: string }[]).map((x) => x.staff_id);
+  const secured = slots.filter((s) => mine.includes(s.staff_id))
+    .reduce((n, s) => n + s.secured, 0);
+  const needed = slots.filter((s) => mine.includes(s.staff_id))
+    .reduce((n, s) => n + s.needed, 0);
+
+  return [
+    { key: 'avg_response_days', label: '平均レスポンス',
+      value: q?.avg_response_days ?? 0, unit: '日', baseline: base, period: ym() },
+    { key: 'unanswered_consultations', label: '未返答の相談',
+      value: unans ?? 0, unit: '件', baseline: null, period: ym() },
+    { key: 'cp_stall_days', label: 'CP判断の滞留',
+      value: 0, unit: '日', baseline: 3, period: ym() },
+    { key: 'assigned_staff', label: '担当人数',
+      value: staff ?? 0, unit: '名', baseline: null, period: ym() },
+    { key: 'secured_hours', label: '確保している時間',
+      value: +secured.toFixed(1), unit: 'h/週', baseline: +needed.toFixed(1), period: ym() },
+  ];
+}
+
+export async function postIndividual(a: {
+  support_id: string; store_id: string; title: string; body: string; metrics: Metric[];
+}) {
+  const { data: u } = await sb.auth.getUser(); if (!u.user) return false;
+  const { error } = await sb.from('notices').insert({
+    kind: 'mgmt_to_support', from_user_id: u.user.id, store_id: a.store_id,
+    subject_user_id: a.support_id, title: a.title, body: a.body,
+    attached_metrics: a.metrics.slice(0, 2),   // 上限2つ
+  });
+  return !error;
+}
+
+export const supports = async () => {
+  const { data } = await sb.from('user_roles')
+    .select('user_id, users:user_id(display_name)').eq('role', 'support').eq('active', true);
+  return ((data ?? []) as unknown as { user_id: string; users: { display_name: string } | null }[])
+    .map((x) => ({ id: x.user_id, name: x.users?.display_name ?? '—' }));
+};

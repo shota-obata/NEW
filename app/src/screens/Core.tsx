@@ -13,6 +13,7 @@ import {
   inboxRows, canReply, askAbout, storeSettings, currentCP, cpConditions, holdCards,
   shareTargets, shareWith, setVision, createCheckpoint, condLabel, FIELD_LABEL,
   nextQuestions, deliverQuestion, submitForReview, snoozeNudge,
+  addParam, sourcePreview, SOURCE_LABEL,
   type ShareTargets, type CondDraft, type CondKind, type NextQDraft,
   type Consult, type Journey, type CP, type Axis, type Param, type Val,
   type InboxRow, type StoreSettings, type CondRow,
@@ -501,6 +502,7 @@ export function CapMap(p: { staffId?: string; onBack: () => void ; nav?: NavSlot
   const [vs, setVs] = useState<Val[]>([]);
   const [j, setJ] = useState<Journey | null>(null);
   const [vision, setVis] = useState('');
+  const [add, setAdd] = useState(false);
 
   useEffect(() => {
     axes().then(setAx);
@@ -635,6 +637,19 @@ export function CapMap(p: { staffId?: string; onBack: () => void ; nav?: NavSlot
         })}
       </div>
 
+      {/* 自分の Map にだけ行が増える。他人の Map を開いているときは出さない */}
+      {!p.staffId && (
+        <>
+          <Spacer h={16} />
+          <button onClick={() => setAdd(true)}
+            style={{ width: '100%', minHeight: 44, cursor: 'pointer', font: 'inherit',
+                     fontSize: 12.5, fontWeight: 640, color: c.weak, background: 'transparent',
+                     border: `1.5px dashed ${c.dash}`, borderRadius: r.input }}>
+            ＋ {tab === 'area' ? '能力領域' : '判断工程'}に追加
+          </button>
+        </>
+      )}
+
       <Spacer />
       <Card tone="flat">
         <div style={{ ...t.small, color: c.weak }}>
@@ -644,7 +659,78 @@ export function CapMap(p: { staffId?: string; onBack: () => void ; nav?: NavSlot
         </div>
       </Card>
       <Spacer />
+
+      {add && (
+        <AddParamSheet axisId={ax.find((x) => x.code === tab)?.id ?? ''}
+          axisName={tab === 'area' ? '能力領域' : '判断工程'}
+          onClose={() => setAdd(false)}
+          onAdded={() => {
+            setAdd(false);
+            const a = ax.find((x) => x.code === tab); if (a) params(a.id).then(setPs);
+          }} />
+      )}
     </Screen>
+  );
+}
+
+// 行を足すシート。名称とソースが揃うまで追加ボタンは無効
+function AddParamSheet(q: {
+  axisId: string; axisName: string; onClose: () => void; onAdded: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [srcs, setSrcs] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const ok = name.trim() && srcs.length > 0;
+
+  return (
+    <Sheet onClose={q.onClose}>
+      <h2 style={{ ...t.h2, margin: 0 }}>{q.axisName}に、何を足しますか。</h2>
+
+      <input value={name} onChange={(e) => setName(e.target.value)}
+        placeholder="名称（例: 前髪の設計）"
+        style={{ width: '100%', marginTop: 18, minHeight: 48, padding: '0 15px',
+                 borderRadius: r.input, border: `1.5px solid ${c.teal}`, background: c.input,
+                 font: 'inherit', fontSize: 15, color: c.text, outline: 'none',
+                 boxSizing: 'border-box' }} />
+
+      <div style={{ marginTop: 16 }}>
+        <Kicker>どこから見るか（1つ以上）</Kicker>
+        <div style={{ marginTop: 10, display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+          {Object.entries(SOURCE_LABEL).map(([k, label]) => {
+            const on = srcs.includes(k);
+            return (
+              <button key={k}
+                onClick={() => setSrcs((v) => on ? v.filter((x) => x !== k) : [...v, k])}
+                style={{ padding: '9px 13px', borderRadius: r.pill, cursor: 'pointer',
+                         font: 'inherit', fontSize: 11.5, fontWeight: 700,
+                         color: on ? c.tealText : c.weak,
+                         background: on ? c.tealBg : 'transparent',
+                         border: `1px solid ${on ? c.teal : c.line}` }}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <p style={{ margin: '16px 0 0', fontSize: 13, lineHeight: 1.75,
+                  color: ok ? c.weak : c.label }}>
+        {sourcePreview(name, srcs)}
+      </p>
+
+      <div style={{ marginTop: 18, display: 'grid', gap: 8 }}>
+        <Button disabled={!ok || busy} onClick={async () => {
+          setBusy(true);
+          const done = await addParam({ axis_id: q.axisId, name, sources: srcs });
+          setBusy(false); if (done) q.onAdded();
+        }}>追加する</Button>
+        <Button variant="ghost" onClick={q.onClose}>やめる</Button>
+      </div>
+
+      <div style={{ marginTop: 14, ...t.small, color: c.weaker }}>
+        ここで足した行は、あなたの Map にだけ増えます。
+      </div>
+    </Sheet>
   );
 }
 
@@ -824,6 +910,7 @@ const CATS = ['シフト・時間', '担当関係', 'Checkpointの設計', '設�
 export function PostNotice(p: {
   kind: 'support_to_mgmt' | 'mgmt_to_all' | 'mgmt_to_support';
   targets?: { id: string; display_name: string }[];   // 対象に入れられるのは担当スタッフだけ
+  onIndividual?: () => void;                          // Management だけ。個別通達へ
   onBack: () => void; nav?: NavSlots;
 }) {
   const [title, setTitle] = useState('');
@@ -854,6 +941,9 @@ export function PostNotice(p: {
             });
             setBusy(false); if (ok) setDone(true);
           }}>{done ? '送信しました' : busy ? '送っています…' : '通達する'}</Button>
+          {p.onIndividual && (
+            <Button variant="outline" onClick={p.onIndividual}>個別通達（Support宛）</Button>
+          )}
           <Button variant="ghost" onClick={p.onBack}>戻る</Button>
         </div>
       }>
