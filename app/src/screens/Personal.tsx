@@ -25,17 +25,19 @@ export function Personal(p: { onBack: () => void; nav?: NavSlots }) {
   const shared = isSharedDevice();
   const hidden = side === 'private' && shared;
 
+  const [limit, setLimit] = useState(20);
+
   const load = () => { notes(side).then(setRows); };
-  useEffect(() => { setRows(null); load(); }, [side]);
+  useEffect(() => { setRows(null); setLimit(20); load(); }, [side]);
 
   return (
     <Screen {...p.nav} bar={<Bar title="パーソナルスペース" right="あなただけ" />}
       footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
 
-      <H>ここは、誰にも見えません。</H>
+      <H>パーソナルスペース</H>
       <P>
-        Support にも運営者にも、
-        <b style={{ fontWeight: 660, color: c.text }}>あることも、件数も出ません。</b>
+        あなただけの場所です。
+        <b style={{ fontWeight: 660, color: c.text }}>ここに書いたものは、あなたが開示しない限り誰にも出ません。</b>
       </P>
 
       {/* 表 / 裏 */}
@@ -52,8 +54,8 @@ export function Personal(p: { onBack: () => void; nav?: NavSlots }) {
 
       <div style={{ marginTop: 10, ...t.small, color: c.weaker, lineHeight: 1.75 }}>
         {side === 'surface'
-          ? '「表」は、あとから担当のSupportに見せることができます。見せるまでは見えません。'
-          : '「裏」は、見せる相手を選べません。開示の導線そのものがありません。'}
+          ? '開示する相手を、1件ずつ選べます。'
+          : '開示する導線がありません。ここに書いたものは、誰にも渡せません。'}
       </div>
 
       {/* 共有端末では「裏」を出さない。消さずに、出さないと書く */}
@@ -62,9 +64,8 @@ export function Personal(p: { onBack: () => void; nav?: NavSlots }) {
           <Spacer h={18} />
           <Card tone="warm">
             <div style={{ ...t.small, color: c.warmDeep, lineHeight: 1.9 }}>
-              <b style={{ fontWeight: 660 }}>この端末では開きません。</b>
-              <br />店舗の共有端末なので、「裏」は出しません。
-              あなたの端末で開いてください。中身はそのまま残っています。
+              <b style={{ fontWeight: 660 }}>この端末では「裏」を開きません。</b>
+              {' '}共有の端末に登録されています。あなた個人の端末から開いてください。
             </div>
           </Card>
         </>
@@ -95,11 +96,20 @@ export function Personal(p: { onBack: () => void; nav?: NavSlots }) {
               まだ何もありません。
             </div></Card>
           ) : (
-            <div style={{ display: 'grid', gap: 9 }}>
-              {rows.map((n) => (
-                <NoteCard key={n.id} note={n} canShare={side === 'surface'} onDone={load} />
-              ))}
-            </div>
+            <>
+              <div style={{ display: 'grid', gap: 9 }}>
+                {rows.slice(0, limit).map((n) => (
+                  <NoteCard key={n.id} note={n} canShare={side === 'surface'} onDone={load} />
+                ))}
+              </div>
+              {rows.length > limit && (
+                <div style={{ marginTop: 11 }}>
+                  <Button variant="ghost" onClick={() => setLimit((v) => v + 20)}>
+                    もっと読む
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </>
       )}

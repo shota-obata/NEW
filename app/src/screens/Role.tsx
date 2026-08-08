@@ -10,8 +10,8 @@
 import { Screen, Bar, H, P, Card, Kicker, Button, Spacer } from '../ui/kit';
 import { c, t, r } from '../ui/tokens';
 import { setChosenRole, type Role } from '../lib/api';
-import { tellManagement } from '../lib/core';
-import { useState } from 'react';
+import { tellManagement, notes } from '../lib/core';
+import { useEffect, useState } from 'react';
 
 const R: { key: Role; label: string; sub: string }[] = [
   { key: 'staff',   label: 'Staff',      sub: '自分の記録・Journey・Capability Map' },
@@ -24,6 +24,10 @@ export function RoleSwitch(p: {
   onPick: (r: Role) => void; onSignOut: () => void; onPersonal: () => void;
 }) {
   const [direct, setDirect] = useState(false);
+  const [surface, setSurface] = useState<number | null>(null);
+
+  useEffect(() => { if (p.current === 'staff') notes('surface').then((x) => setSurface(x.length)); },
+            [p.current]);
 
   if (direct) return <DirectToMgmt onBack={() => setDirect(false)} />;
 
@@ -64,10 +68,21 @@ export function RoleSwitch(p: {
       {p.current === 'staff' && (
         <div style={{ marginTop: 22, paddingTop: 16, borderTop: `1px solid ${c.line}`,
                       display: 'grid', gap: 14 }}>
+          {/* ボックス1つ。件数は「表」だけ出す — 裏の件数は出さない */}
           <button onClick={p.onPersonal}
-            style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
-                     font: 'inherit', fontSize: 13, color: c.weak, textAlign: 'left' }}>
-            パーソナルスペース
+            style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
+                     padding: '15px 17px', borderRadius: r.card, background: c.card,
+                     border: `1px solid ${c.cardLine}` }}>
+            <div style={{ display: 'flex', alignItems: 'baseline',
+                          justifyContent: 'space-between', gap: 10 }}>
+              <b style={{ fontSize: 13.5, fontWeight: 640 }}>パーソナルスペース</b>
+              {surface !== null && (
+                <span style={{ fontSize: 11, color: c.label }}>{surface} 件</span>
+              )}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 11.5, lineHeight: 1.7, color: c.weaker }}>
+              あなただけの場所です。ここに書いたものは、あなたが開示しない限り誰にも出ません。
+            </div>
           </button>
           <button onClick={() => setDirect(true)}
             style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer',

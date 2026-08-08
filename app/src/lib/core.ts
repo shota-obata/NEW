@@ -185,7 +185,10 @@ export const holds = async (cp_id: string) =>
     { id: string; reason: string; add_what: string; created_at: string }[];
 
 // ---- Capability Map ---------------------------------------------------
-export type Param = { id: string; name: string; sources: string[]; parent_id: string | null; axis_id: string };
+export type Param = {
+  id: string; name: string; sources: string[]; parent_id: string | null;
+  axis_id: string; owner_user_id: string | null;
+};
 export type Axis = { id: string; code: 'area' | 'step'; label: string };
 export type Val = {
   staff_id: string; param_id: string; value: number;
@@ -637,4 +640,27 @@ export async function addParam(a: { axis_id: string; name: string; sources: stri
     sort_order: 99,
   });
   return !error;
+}
+
+// ---- Capability Map の行を変える（Management 7）----------------------
+// Management は名称・ソースとも可。Support はソースのみ・名称は不可。
+// 本人が足した行（owner_user_id が本人）は本人が両方可。
+// 理由は30字以上（本人が自分の行を変えるときは不要）。
+// 権限は DB のトリガでも守っている。
+
+export async function changeParam(a: {
+  param_id: string; name?: string; sources?: string[]; reason?: string; own: boolean;
+}) {
+  if (!a.own && (!a.reason || a.reason.trim().length < 30)) return false;
+  const patch: Record<string, unknown> = {};
+  if (a.name !== undefined) patch.name = a.name.trim();
+  if (a.sources !== undefined) patch.sources = a.sources;
+  const { error } = await sb.from('capability_params').update(patch).eq('id', a.param_id);
+  if (error) return false;
+  // 理由は履歴側に残す（列の更新はトリガが拾う）
+  if (a.reason?.trim())
+    await sb.from('capability_param_changes')
+      .update({ reason: a.reason.trim() })
+      .eq('param_id', a.param_id).is('reason', null);
+  return true;
 }

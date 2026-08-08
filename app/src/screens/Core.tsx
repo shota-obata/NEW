@@ -13,7 +13,7 @@ import {
   inboxRows, canReply, askAbout, storeSettings, currentCP, cpConditions, holdCards,
   shareTargets, shareWith, setVision, createCheckpoint, condLabel, FIELD_LABEL,
   nextQuestions, deliverQuestion, submitForReview, snoozeNudge,
-  addParam, sourcePreview, SOURCE_LABEL,
+  addParam, sourcePreview, SOURCE_LABEL, changeParam,
   type ShareTargets, type CondDraft, type CondKind, type NextQDraft,
   type Consult, type Journey, type CP, type Axis, type Param, type Val,
   type InboxRow, type StoreSettings, type CondRow,
@@ -495,7 +495,9 @@ const area: React.CSSProperties = {
 // Capability Map
 // ============================================================
 
-export function CapMap(p: { staffId?: string; onBack: () => void ; nav?: NavSlots}) {
+export function CapMap(p: {
+  staffId?: string; isMgmt?: boolean; onBack: () => void; nav?: NavSlots;
+}) {
   const [ax, setAx] = useState<Axis[]>([]);
   const [tab, setTab] = useState<'area' | 'step'>('area');
   const [ps, setPs] = useState<Param[]>([]);
@@ -503,11 +505,16 @@ export function CapMap(p: { staffId?: string; onBack: () => void ; nav?: NavSlot
   const [j, setJ] = useState<Journey | null>(null);
   const [vision, setVis] = useState('');
   const [add, setAdd] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [edit, setEdit] = useState<Param | null>(null);
+  const [me, setMe] = useState<string | null>(null);
 
   useEffect(() => {
     axes().then(setAx);
     values(p.staffId).then(setVs);
     myJourney(p.staffId).then((x) => { setJ(x); setVis(x?.vision ?? ''); });
+    import('../lib/api').then((m) => m.sb.auth.getUser())
+      .then(({ data }) => setMe(data.user?.id ?? null));
   }, [p.staffId]);
   useEffect(() => {
     const a = ax.find((x) => x.code === tab); if (a) params(a.id).then(setPs);
@@ -529,8 +536,16 @@ export function CapMap(p: { staffId?: string; onBack: () => void ; nav?: NavSlot
     const unverified = !!v?.unverified;
     const chips = q.param.sources ?? [];
 
+    const hold = () => setEdit(q.param);
+
     return (
-      <div>
+      <div onContextMenu={(e) => { e.preventDefault(); hold(); }}
+        onClick={() => editMode && hold()}
+        style={{ cursor: editMode ? 'pointer' : undefined,
+                 padding: editMode ? '11px 13px' : undefined,
+                 margin: editMode ? '-11px -13px' : undefined,
+                 borderRadius: editMode ? r.input : undefined,
+                 background: editMode ? c.flat : undefined }}>
         <div style={{ display: 'flex', alignItems: 'baseline',
                       justifyContent: 'space-between', gap: 10 }}>
           <b style={{ fontSize: q.sub ? 12.5 : 14.5, fontWeight: q.sub ? 600 : 640 }}>
@@ -650,6 +665,16 @@ export function CapMap(p: { staffId?: string; onBack: () => void ; nav?: NavSlot
         </>
       )}
 
+      {/* 長押しは発見されにくいので、一行リンクを併置する */}
+      <div style={{ marginTop: 12 }}>
+        <button onClick={() => setEditMode((v) => !v)}
+          style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
+                   font: 'inherit', fontSize: 12.5,
+                   color: editMode ? c.tealText : c.weak }}>
+          {editMode ? '行を選ぶのをやめる' : '行の名称とソースを変える'}
+        </button>
+      </div>
+
       <Spacer />
       <Card tone="flat">
         <div style={{ ...t.small, color: c.weak }}>
@@ -659,6 +684,17 @@ export function CapMap(p: { staffId?: string; onBack: () => void ; nav?: NavSlot
         </div>
       </Card>
       <Spacer />
+
+      {/* 名称を変えられるのは Management と、自分が足した行の本人だけ */}
+      {edit && (
+        <EditParamSheet param={edit}
+          canRename={!!p.isMgmt || (!!me && edit.owner_user_id === me)}
+          onClose={() => setEdit(null)}
+          onSaved={() => {
+            setEdit(null); setEditMode(false);
+            const a = ax.find((x) => x.code === tab); if (a) params(a.id).then(setPs);
+          }} />
+      )}
 
       {add && (
         <AddParamSheet axisId={ax.find((x) => x.code === tab)?.id ?? ''}
@@ -1438,3 +1474,94 @@ const selectStyle: React.CSSProperties = {
   border: `1px solid ${c.line}`, background: c.input, font: 'inherit',
   fontSize: 13.5, color: c.text, outline: 'none', boxSizing: 'border-box',
 };
+
+// 行の名称とソースを変える（Management 7）
+function EditParamSheet(q: {
+  param: Param; canRename: boolean; onClose: () => void; onSaved: () => void;
+}) {
+  const [name, setName] = useState(q.param.name);
+  const [srcs, setSrcs] = useState<string[]>(q.param.sources ?? []);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const own = q.canRename;                       // 自分が足した行
+  const changed = name !== q.param.name
+               || srcs.join() !== (q.param.sources ?? []).join();
+  const ok = changed && srcs.length > 0
+          && (own || reason.trim().length >= 30);
+
+  return (
+    <Sheet onClose={q.onClose}>
+      <h2 style={{ ...t.h2, margin: 0 }}>この行を変えます。</h2>
+
+      {own ? (
+        <input value={name} onChange={(e) => setName(e.target.value)}
+          style={{ width: '100%', marginTop: 18, minHeight: 48, padding: '0 15px',
+                   borderRadius: r.input, border: `1.5px solid ${c.teal}`, background: c.input,
+                   font: 'inherit', fontSize: 15, color: c.text, outline: 'none',
+                   boxSizing: 'border-box' }} />
+      ) : (
+        <>
+          <div style={{ marginTop: 18, padding: '13px 15px', borderRadius: r.input,
+                        background: c.flat, fontSize: 14, fontWeight: 640 }}>
+            {q.param.name}
+          </div>
+          <Card tone="flat" style={{ marginTop: 11 }}>
+            <div style={{ ...t.small, color: c.weak, lineHeight: 1.85 }}>
+              <b style={{ fontWeight: 660, color: c.text }}>名称は Management が決めます。</b>
+              {' '}変えたいときは、Managementへ通達から伝えてください。
+            </div>
+          </Card>
+        </>
+      )}
+
+      <div style={{ marginTop: 18 }}>
+        <Kicker>どこから見るか</Kicker>
+        <div style={{ marginTop: 10, display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+          {Object.entries(SOURCE_LABEL).map(([k, label]) => {
+            const on = srcs.includes(k);
+            return (
+              <button key={k}
+                onClick={() => setSrcs((v) => on ? v.filter((x) => x !== k) : [...v, k])}
+                style={{ padding: '9px 13px', borderRadius: r.pill, cursor: 'pointer',
+                         font: 'inherit', fontSize: 11.5, fontWeight: 700,
+                         color: on ? c.tealText : c.weak,
+                         background: on ? c.tealBg : 'transparent',
+                         border: `1px solid ${on ? c.teal : c.line}` }}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {!own && (
+        <>
+          <Spacer h={16} />
+          <label style={{ display: 'grid', gap: 7 }}>
+            <span style={t.field}>変える理由（30字以上）</span>
+            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3}
+              style={{ ...area, minHeight: 62 }} />
+          </label>
+          <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.7, color: c.weaker }}>
+            本人の受信ボックスに、変更前後と理由が届きます。
+            {reason.trim().length < 30 && ` あと${30 - reason.trim().length}字。`}
+          </div>
+        </>
+      )}
+
+      <div style={{ marginTop: 18, display: 'grid', gap: 8 }}>
+        <Button disabled={!ok || busy} onClick={async () => {
+          setBusy(true);
+          const done = await changeParam({
+            param_id: q.param.id,
+            name: own ? name : undefined, sources: srcs,
+            reason: own ? undefined : reason, own,
+          });
+          setBusy(false); if (done) q.onSaved();
+        }}>変える</Button>
+        <Button variant="ghost" onClick={q.onClose}>やめる</Button>
+      </div>
+    </Sheet>
+  );
+}

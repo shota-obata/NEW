@@ -229,6 +229,7 @@ export function App() {
     <JourneyScreen canDecide={false} nav={bar} onBack={home} onHolds={() => go('holds')} />
   );
   if (nav === 'map') return <CapMap nav={bar} onBack={home} />;
+
   if (nav === 'practice') return (
     <Practice id={recId} storeId={storeId} onBack={home} />
   );
