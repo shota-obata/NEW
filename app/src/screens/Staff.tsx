@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer , type NavSlots } from '../ui/kit';
 import { c, t, r, serif } from '../ui/tokens';
-import { myHolds } from '../lib/core';
+import { myHolds, myNudge, latestNotice, type Notice } from '../lib/core';
 import { ConsultSheet, ShareSheet } from './Core';
 import {
   myRecords, myStore, storeState, createRecord, saveRecord, getRecord,
@@ -23,14 +23,19 @@ const md = (s: string) => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
 
 export function Home(p: { name: string | null; onOpen: (id: string) => void; onNew: () => void;
                           onSettings: () => void; onHolds: () => void;
+                          onInbox: () => void; onPolicy: () => void;
                           nav?: NavSlots }) {
   const [recs, setRecs] = useState<Record_[] | null>(null);
   const [st, setSt] = useState<{ open: boolean; closedDay: boolean } | null>(null);
   const [hd, setHd] = useState<{ id: string; reason: string; add_what: string }[]>([]);
+  const [nudge, setNudge] = useState<Awaited<ReturnType<typeof myNudge>>>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
 
   useEffect(() => {
     myRecords(5).then(setRecs);
     myHolds().then(setHd);
+    myNudge().then(setNudge);
+    latestNotice().then(setNotice);
     myStore().then((s) => s && storeState(s.id).then(setSt));
   }, []);
 
@@ -55,6 +60,30 @@ export function Home(p: { name: string | null; onOpen: (id: string) => void; onN
             {' '}記録は書けますが、義務ではありません（就業規則 第2条第3項）。
           </div>
         </Card></>
+      )}
+
+      {/* 催促。自動で出るものにも「SUPPORTから」と書く —
+          催促は担当が気にしている、という事実の代理表示だから */}
+      {nudge && (
+        <>
+          <Spacer h={18} />
+          <Card tone="teal">
+            <Kicker tone="teal">SUPPORTから · 催促 {nudge.count}回目</Kicker>
+            <h2 style={{ ...t.h2, margin: '11px 0 0', color: c.tealDeep }}>
+              {nudge.kind === 'policy_unconsented' ? 'まだ読んでいない規定があります。'
+               : '少し、間が空いています。'}
+            </h2>
+            <p style={{ margin: '10px 0 0', ...t.small, color: c.tealDeep, lineHeight: 1.85 }}>
+              {nudge.kind === 'policy_unconsented'
+                ? '就業規則の追加条文に、まだ同意が入っていません。読んでから決めてください。'
+                : 'うまくいった日ではなく、判断がズレた日を1件書くところからで構いません。'}
+            </p>
+            <Spacer h={13} />
+            <Button onClick={nudge.kind === 'policy_unconsented' ? p.onPolicy : p.onNew}>
+              {nudge.kind === 'policy_unconsented' ? '規定を読む' : '記録を書く'}
+            </Button>
+          </Card>
+        </>
       )}
 
       <H>{recs === null ? ' ' : recs.length === 0 ? '最初の1件を書くところから。' : '今日の一手'}</H>
@@ -133,6 +162,32 @@ export function Home(p: { name: string | null; onOpen: (id: string) => void; onN
             : hd[0].add_what}
         </div>
       </button>
+
+      {/* 全体通達。最新1件のみ、件数は出さない（「3件」と出すと読む作業になる）。
+          本文は冒頭2行まで — Home が読み物になると「今日の一手」が下に押される */}
+      <Spacer h={11} />
+      <Card tone="flat">
+        <Kicker>全体通達</Kicker>
+        {notice ? (
+          <>
+            <div style={{ marginTop: 9, fontSize: 13.5, fontWeight: 640 }}>{notice.title}</div>
+            <p style={{ margin: '7px 0 0', fontSize: 12.5, lineHeight: 1.75, color: c.weak,
+                        display: '-webkit-box', WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              {notice.body}
+            </p>
+            <button onClick={p.onInbox}
+              style={{ marginTop: 10, padding: 0, border: 0, background: 'transparent',
+                       cursor: 'pointer', font: 'inherit', fontSize: 12.5, color: c.tealText }}>
+              受信ボックスで読む
+            </button>
+          </>
+        ) : (
+          <div style={{ marginTop: 9, fontSize: 13, lineHeight: 1.75, color: c.weak }}>
+            まだ通達はありません。
+          </div>
+        )}
+      </Card>
 
       {/* 一度読めば済むもの・たまにしか使わないものは設定へ。
           日常の画面に置くと、それ自体が判断になる（10c と同じ考え方） */}

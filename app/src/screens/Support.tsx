@@ -9,8 +9,8 @@ import { Screen, Bar, H, P, Card, Kicker, Button, Spacer, type NavSlots } from '
 import { c, t, r } from '../ui/tokens';
 import { assignedStaff, sharedRecords, markViewed, myViewed, attention, needsAction,
          type Staff, type Attention } from '../lib/support';
-import { storeSettings, myJourney, setCurrentPosition,
-         type StoreSettings, type Journey } from '../lib/core';
+import { storeSettings, myJourney, setCurrentPosition, checkpoints,
+         type StoreSettings, type Journey, type CP } from '../lib/core';
 import { consultations, type Consultation } from '../lib/support';
 import { listImages, imageUrl, viewers, type Record_, type Img } from '../lib/staff';
 import { replyToRecord } from '../lib/core';
@@ -416,16 +416,21 @@ export function StaffList(p: {
 
 export function StaffDetail(p: {
   staffId: string; onBack: () => void; onOpenRecord: (id: string) => void;
-  onNotice: () => void; nav?: NavSlots;
+  onNotice: () => void; onNewCp: () => void; onNextQuestion: (cpId: string) => void;
+  nav?: NavSlots;
 }) {
   const [att, setAtt] = useState<Attention | null>(null);
   const [recs, setRecs] = useState<(Record_ & { staff_id: string })[]>([]);
   const [cons, setCons] = useState<Consultation[]>([]);
   const [j, setJ] = useState<Journey | null>(null);
   const [pos, setPos] = useState('');
+  const [cps, setCps] = useState<(CP & { reached_at: string | null })[]>([]);
 
   useEffect(() => {
-    myJourney(p.staffId).then((x) => { setJ(x); setPos(x?.current_position ?? ''); });
+    myJourney(p.staffId).then(async (x) => {
+      setJ(x); setPos(x?.current_position ?? '');
+      if (x) setCps(await checkpoints(x.id) as (CP & { reached_at: string | null })[]);
+    });
     attention().then((xs) => setAtt(xs.find((x) => x.staff.id === p.staffId) ?? null));
     sharedRecords().then((xs) => setRecs(xs.filter((x) => x.staff_id === p.staffId)));
     consultations().then((xs) => setCons(xs.filter((x) => x.staff_id === p.staffId)));
@@ -535,6 +540,35 @@ export function StaffDetail(p: {
             </div>
           </button>
         ))}
+      </div>
+
+      {/* Checkpoint を置く／次の問いを渡す。CP は Support が置く */}
+      <Spacer />
+      <Kicker>Checkpoint</Kicker>
+      <div style={{ marginTop: 12, display: 'grid', gap: 9 }}>
+        {cps.length === 0 ? (
+          <Card tone="flat"><div style={{ ...t.small, color: c.weak }}>
+            まだ Checkpoint がありません。本人だけでは進みません。
+          </div></Card>
+        ) : cps.map((x) => (
+          <Card key={x.id} tone={x.reached_at ? 'teal' : 'plain'}>
+            <div style={{ display: 'flex', alignItems: 'baseline',
+                          justifyContent: 'space-between', gap: 10 }}>
+              <b style={{ fontSize: 13.5, fontWeight: 660 }}>{x.code} · {x.title}</b>
+              <span style={{ fontSize: 11, color: x.reached_at ? c.tealText : c.label }}>
+                {x.reached_at ? '到達' : x.os_passed_at ? '判断待ち' : '進行中'}
+              </span>
+            </div>
+            {x.reached_at && (
+              <div style={{ marginTop: 11 }}>
+                <Button variant="outline" onClick={() => p.onNextQuestion(x.id)}>
+                  次の問いを渡す
+                </Button>
+              </div>
+            )}
+          </Card>
+        ))}
+        <Button variant="outline" onClick={p.onNewCp}>Checkpoint を置く</Button>
       </div>
 
       {/* 設計に返す */}

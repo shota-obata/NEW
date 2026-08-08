@@ -13,9 +13,11 @@ import { Home, Practice } from './screens/Staff';
 import { Settings } from './screens/Settings';
 import { SupportHome, SharedRecord, StaffList, StaffDetail } from './screens/Support';
 import { MgmtHome, Quality, Devices } from './screens/Mgmt';
-import { JourneyScreen, CapMap, InboxScreen, PostNotice, Holds } from './screens/Core';
+import { JourneyScreen, CapMap, InboxScreen, PostNotice, Holds,
+         NewCheckpoint, NextQuestion } from './screens/Core';
 import { RoleSwitch } from './screens/Role';
-import { currentCP } from './lib/core';
+import { currentCP, myJourney, checkpoints } from './lib/core';
+import { assignedStaff } from './lib/support';
 import { myStore } from './lib/staff';
 import { Screen, Bar, P, Spacer, TabBar, Pills, MgmtNav, type Item } from './ui/kit';
 import { loginGate, session, signOut, me, chosenRole, type Next, type Role } from './lib/api';
@@ -33,6 +35,15 @@ const TABS = (cp: string | null): Record<Role, Item[]> => ({
          ['view', '閲覧'], ['devices', '端末'], ['settings', '設定'], ['role', '役割']],
 });
 
+// CP を置く／次の問いを渡すのに要る文脈を、まとめて引く
+async function cpContext(staffId: string) {
+  const j = await myJourney(staffId);
+  if (!j) return null;
+  const all = await checkpoints(j.id);
+  return { journeyId: j.id, nextCode: `CP${all.length + 1}`,
+           existing: all.map((x) => x.code) };
+}
+
 export function App() {
   const [gate, setGate] = useState<Gate | 'ok'>('boot');
   const [role, setRole] = useState<Role>(chosenRole());
@@ -43,6 +54,9 @@ export function App() {
   const [storeId, setStoreId] = useState<string | null>(null);
   const [recId, setRecId] = useState<string | null>(null);
   const [cpCode, setCpCode] = useState<string | null>(null);
+  const [cpCtx, setCpCtx] = useState<
+    { journeyId: string; nextCode: string; existing: string[]; cpId?: string } | null>(null);
+  const [targets, setTargets] = useState<{ id: string; display_name: string }[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -59,6 +73,9 @@ export function App() {
       });
       myStore().then((st) => st && setStoreId(st.id));
       currentCP().then(({ cp }) => setCpCode(cp?.code ?? null));
+      // 通達の「対象」に入れられるのは担当スタッフだけ
+      assignedStaff().then((xs) =>
+        setTargets(xs.map((x) => ({ id: x.id, display_name: x.display_name }))));
     })();
   }, []);
 
@@ -134,14 +151,32 @@ export function App() {
     if (recId) return (
       <SharedRecord id={recId} onBack={() => setRecId(null)} />
     );
-    if (nav === 'notice') return <PostNotice kind="support_to_mgmt" nav={bar} onBack={home} />;
+    if (nav === 'notice') return (
+      <PostNotice kind="support_to_mgmt" nav={bar} targets={targets} onBack={home} />
+    );
+    if (nav === 'newcp' && cpCtx) return (
+      <NewCheckpoint journeyId={cpCtx.journeyId} nextCode={cpCtx.nextCode}
+        existing={cpCtx.existing}
+        onDone={() => { setCpCtx(null); go('staff'); }}
+        onCancel={() => { setCpCtx(null); go('staff'); }} />
+    );
+    if (nav === 'nextq' && cpCtx) return (
+      <NextQuestion cpId={cpCtx.cpId!} journeyId={cpCtx.journeyId} nextCode={cpCtx.nextCode}
+        nav={bar}
+        onDone={() => { setCpCtx(null); go('staff'); }}
+        onBack={() => { setCpCtx(null); go('staff'); }} />
+    );
     if (nav === 'staff') {
       // 一覧 → 詳細。担当が1名でも一覧を飛ばさない
       if (sub) return (
         <StaffDetail staffId={sub} nav={bar}
           onBack={() => setSub(null)}
           onOpenRecord={(id) => setRecId(id)}
-          onNotice={() => go('notice')} />
+          onNotice={() => go('notice')}
+          onNewCp={async () => { const x = await cpContext(sub); if (x) { setCpCtx(x); setNav('newcp'); } }}
+          onNextQuestion={async (cpId) => {
+            const x = await cpContext(sub); if (x) { setCpCtx({ ...x, cpId }); setNav('nextq'); }
+          }} />
       );
       return <StaffList nav={bar} onOpen={(id) => setSub(id)} />;
     }
@@ -165,6 +200,8 @@ export function App() {
       onOpen={(id) => { setRecId(id); setNav('practice'); }}
       onNew={() => { setRecId(null); setNav('practice'); }}
       onHolds={() => go('holds')}
+      onInbox={() => go('inbox')}
+      onPolicy={() => setSub('policy')}
       onSettings={() => go('settings')} />
   );
 }

@@ -442,3 +442,109 @@ export async function setCurrentPosition(journey_id: string, current_position: s
     .update({ current_position }).eq('id', journey_id);
   return !error;
 }
+
+// ---- Home に出すもの（第1便 E ／ 第4便 AA）---------------------------
+
+// 催促。未読のものだけ。回数はキッカーに出す
+export async function myNudge() {
+  const { data } = await sb.from('inbox_items')
+    .select('*').eq('source_kind', 'nudge').is('read_at', null).is('deleted_at', null)
+    .order('created_at', { ascending: false }).limit(1);
+  const it = (data?.[0] ?? null) as Inbox | null;
+  if (!it) return null;
+  const { data: st } = await sb.from('nudge_states')
+    .select('count, trigger_kind').eq('subject_id', it.source_id ?? '').limit(1);
+  const n = (st?.[0] as { count: number } | undefined)?.count ?? 1;
+  const kind = (st?.[0] as { trigger_kind: string } | undefined)?.trigger_kind
+            ?? 'records_stalled';
+  return { item: it, count: n, kind };
+}
+
+// 全体通達は最新1件のみ。件数は出さない（「3件」と出すと読む作業になる）
+export async function latestNotice(): Promise<Notice | null> {
+  const { data } = await sb.from('notices')
+    .select('*').eq('kind', 'mgmt_to_all')
+    .order('created_at', { ascending: false }).limit(1);
+  return (data?.[0] ?? null) as Notice | null;
+}
+
+// ---- CP を作る（第5便 AK ／ 第4便 AE）--------------------------------
+// Support に JSON は書かせない。種類3択＋件数＋自動生成の label。
+// 条件は3つまで — 4つ以上は CP を2つに割るサイン。
+
+export type CondKind = 'shared_records' | 'record_field' | 'cp_reached';
+export type CondDraft = {
+  id: string; kind: CondKind; count: number;
+  field?: 'misjudgment' | 'reflection' | 'next_xp'; code?: string; label: string;
+};
+
+export const FIELD_LABEL: Record<string, string> = {
+  misjudgment: 'ズレた判断', reflection: '反省', next_xp: '次回への貯め方',
+};
+
+// label は選んだ種類から自動で作る。編集もできる
+export function condLabel(d: Omit<CondDraft, 'id' | 'label'>): string {
+  if (d.kind === 'shared_records') return `共有した記録が${d.count}件`;
+  if (d.kind === 'record_field')
+    return `${FIELD_LABEL[d.field ?? 'reflection']}を書いた記録が${d.count}件`;
+  return `${d.code ?? 'CP1'}に到達している`;
+}
+
+export type NextQDraft = { kind: 'as_is' | 'smaller' | 'shift_area'; body: string; reason: string };
+
+export async function createCheckpoint(a: {
+  journey_id: string; code: string; title: string;
+  conditions: CondDraft[]; questions: NextQDraft[];
+}) {
+  const conditions = a.conditions.slice(0, 3).map((d) => ({
+    id: d.id, label: d.label,
+    test: d.kind === 'shared_records' ? { kind: d.kind, count: d.count }
+        : d.kind === 'record_field'   ? { kind: d.kind, field: d.field, count: d.count }
+        :                               { kind: d.kind, code: d.code },
+  }));
+
+  const { data, error } = await sb.from('checkpoints').insert({
+    journey_id: a.journey_id, code: a.code, title: a.title,
+    conditions, required_evidence: 3,
+  }).select('id').single();
+  if (error || !data) return null;
+  const cp = (data as { id: string }).id;
+
+  // 次の問いは CP と一緒に書く。到達の瞬間には何も生成しない
+  for (const q of a.questions.filter((x) => x.body.trim() && x.reason.trim())) {
+    await sb.from('next_questions').insert({
+      journey_id: a.journey_id, from_checkpoint_id: cp,
+      body: q.body.trim(), reason: q.reason.trim(),
+      origin: 'os', adjust_kind: q.kind,
+    });
+  }
+  return cp;
+}
+
+// ---- 次の問いを渡す（第4便 AE）---------------------------------------
+export const nextQuestions = async (cp_id: string) =>
+  ((await sb.from('next_questions').select('*').eq('from_checkpoint_id', cp_id)
+      .order('created_at')).data ?? []) as {
+    id: string; body: string; reason: string; origin: string;
+    adjust_kind: string | null; adjust_reason: string | null;
+    delivered_at: string | null; journey_id: string;
+  }[];
+
+export async function deliverQuestion(a: {
+  id: string; journey_id: string; kind: 'as_is' | 'smaller' | 'shift_area';
+  reason: string; code: string; title: string;
+}) {
+  const { data: u } = await sb.auth.getUser(); if (!u.user) return false;
+
+  const { data: cp } = await sb.from('checkpoints').insert({
+    journey_id: a.journey_id, code: a.code, title: a.title, required_evidence: 3,
+  }).select('id').single();
+
+  const { error } = await sb.from('next_questions').update({
+    adjust_kind: a.kind,
+    adjust_reason: a.kind === 'as_is' ? (a.reason || null) : a.reason,
+    adjusted_by: u.user.id, delivered_at: new Date().toISOString(),
+    created_checkpoint_id: (cp as { id: string } | null)?.id ?? null,
+  }).eq('id', a.id);
+  return !error;
+}
