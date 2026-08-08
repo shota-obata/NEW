@@ -166,7 +166,7 @@ export function PolicyFull(p: { onBack: () => void }) {
                     <span style={{ fontSize: 11.5, color: c.label, paddingTop: 3, textAlign: 'center' }}>
                       {paras.length > 1 ? i + 1 : ''}
                     </span>
-                    <span style={{ fontSize: 13, lineHeight: 2.05, color: '#3f3d38',
+                    <span style={{ fontSize: 13, lineHeight: 2.05, color: c.quote,
                                    whiteSpace: 'pre-line' }}>{text}</span>
                   </div>
                 ))}

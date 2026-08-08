@@ -14,7 +14,8 @@ import { consentGap, supportQuality, gateOpen, policyState, storageForecast,
          slotsOfWeek, openSlot, allAssignments, proposeEnd, saveSettings, fixables,
          businessHours, announcePolicy, policyNudgeCount, nudgeUnconsented,
          hoursNoticeBody, saveHours, deletionRequests, approveDeletion, cancelDeletion,
-         type Hours,
+         metricsFor, postIndividual, supports,
+         type Hours, type Metric, type MetricKey,
          type Quality, type Rollout, type Device, type Slots, type Fix } from '../lib/mgmt';
 import { storeSettings, type StoreSettings } from '../lib/core';
 
@@ -212,7 +213,7 @@ export function Quality(p: { onBack: () => void ; nav?: NavSlots}) {
           <Kicker>第6条（指導内容の確認）</Kicker>
           <p style={{ margin: '11px 0 0', padding: '14px 15px', borderRadius: r.input,
                       background: c.input, border: `1px solid ${c.line}`,
-                      fontSize: 12.5, lineHeight: 1.95, color: '#3f3d38', whiteSpace: 'pre-line' }}>
+                      fontSize: 12.5, lineHeight: 1.95, color: c.quote, whiteSpace: 'pre-line' }}>
 {`1　会社は、指導の質を確保し、育成の体制を適正に保つため、指導者が従業員に対して行った返答の内容および返答までに要した日数を確認することがある。
 3　第1項の確認は、対象となる従業員および指導者に対して個別に通知せず、第5条第1項の開示の対象としない。`}
           </p>
@@ -721,7 +722,7 @@ export function ViewLock(p: { onNudge: () => void; onPolicy: () => void; nav?: N
                     border: `1px solid ${c.line}`, borderRadius: r.card, overflow: 'hidden' }}>
         {CONDS.map(([ok, head, now, col]) => (
           <div key={head} style={{ padding: '15px 16px', display: 'flex', gap: 12,
-                                   background: ok ? '#faf9f7' : c.card,
+                                   background: c.card,
                                    borderLeft: ok ? 0 : `2px solid ${c.warmLine}` }}>
             <span style={{ width: 20, height: 20, borderRadius: '50%', flex: '0 0 auto',
                            display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700,
@@ -1102,6 +1103,125 @@ export function Retirement(p: { onBack: () => void; nav?: NavSlots }) {
         <div style={{ ...t.small, color: c.weak }}>
           受信ボックスは、消去してから30日で自動的に消えます。
           Practice記録は「消す」を選んだときだけ、24時間の保留と3名の同意を経て消えます。
+        </div>
+      </Card>
+      <Spacer />
+    </Screen>
+  );
+}
+
+// ============================================================
+// 個別通達（Mgmt 4）— Support 宛に、数字だけを添える
+//
+// 添えられるのは5つ、選べるのは2つまで。
+// 3つ以上並べると、通達が査定表になる。
+// 個々の返答文・相談本文は入れられない（列の形として持たない）。
+// ============================================================
+
+export function Individual(p: { onBack: () => void; nav?: NavSlots }) {
+  const [sups, setSups] = useState<{ id: string; name: string }[]>([]);
+  const [to, setTo] = useState<string | null>(null);
+  const [ms, setMs] = useState<Metric[]>([]);
+  const [pick, setPick] = useState<MetricKey[]>([]);
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [store, setStore] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  useEffect(() => {
+    supports().then((xs) => { setSups(xs); setTo((v) => v ?? xs[0]?.id ?? null); });
+    businessHours().then((x) => setStore(x?.id ?? null));
+  }, []);
+  useEffect(() => { if (to) metricsFor(to).then(setMs); setPick([]); }, [to]);
+
+  const toggle = (k: MetricKey) =>
+    setPick((v) => v.includes(k) ? v.filter((x) => x !== k) : v.length >= 2 ? v : [...v, k]);
+
+  const chosen = ms.filter((m) => pick.includes(m.key));
+
+  return (
+    <Screen {...p.nav} bar={<Bar title="個別通達" right={sent ? '送信しました' : '返答文は引用できません'} />}
+      footer={
+        <div style={{ display: 'grid', gap: 8 }}>
+          <Button disabled={!to || !store || !title.trim() || !body.trim() || busy || sent}
+            onClick={async () => {
+              if (!to || !store) return;
+              setBusy(true);
+              const ok = await postIndividual({
+                support_id: to, store_id: store,
+                title: title.trim(), body: body.trim(), metrics: chosen,
+              });
+              setBusy(false); if (ok) setSent(true);
+            }}>{sent ? '送信しました' : '通達する'}</Button>
+          <Button variant="ghost" onClick={p.onBack}>戻る</Button>
+        </div>
+      }>
+
+      <H>傾向として渡します。</H>
+
+      <Spacer h={18} />
+      <Kicker>宛先</Kicker>
+      <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {sups.map((x) => (
+          <button key={x.id} onClick={() => setTo(x.id)}
+            style={{ padding: '8px 12px', borderRadius: r.pill, cursor: 'pointer',
+                     font: 'inherit', fontSize: 11.5, fontWeight: 700,
+                     color: to === x.id ? c.tealText : c.weak,
+                     background: to === x.id ? c.tealBg : 'transparent',
+                     border: `1px solid ${to === x.id ? c.teal : c.line}` }}>
+            {x.name}
+          </button>
+        ))}
+      </div>
+
+      {/* 添える数字。2つまで */}
+      <Spacer />
+      <Kicker>添える数字（2つまで）</Kicker>
+      <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+        {ms.map((m) => {
+          const on = pick.includes(m.key);
+          const over = m.baseline !== null && m.value > m.baseline;
+          return (
+            <button key={m.key} onClick={() => toggle(m.key)}
+              style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
+                       padding: '12px 15px', borderRadius: r.input, display: 'flex',
+                       alignItems: 'center', gap: 12,
+                       background: on ? c.tealBg : c.card,
+                       border: `1px solid ${on ? c.teal : c.cardLine}` }}>
+              <span style={{ flex: 1, fontSize: 13 }}>{m.label}</span>
+              <span style={{ fontSize: 15, fontWeight: 640,
+                             color: over ? c.warmText : c.text }}>
+                {m.value}{m.unit}
+              </span>
+              {m.baseline !== null && (
+                <span style={{ fontSize: 9.5, color: c.weaker }}>基準 {m.baseline}{m.unit}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <Spacer />
+      <div style={{ display: 'grid', gap: 12 }}>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="題名"
+          style={{ width: '100%', minHeight: 50, padding: '0 15px', borderRadius: r.input,
+                   border: `1.5px solid ${c.teal}`, background: c.input, font: 'inherit',
+                   fontSize: 16, fontWeight: 620, outline: 'none', boxSizing: 'border-box' }} />
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="本文"
+          rows={6}
+          style={{ width: '100%', padding: '13px 15px', borderRadius: r.input,
+                   border: `1px solid ${c.line}`, background: c.input, font: 'inherit',
+                   fontSize: 13, lineHeight: 1.8, color: c.text, outline: 'none',
+                   resize: 'vertical', boxSizing: 'border-box' }} />
+      </div>
+
+      <Spacer />
+      <Card tone="warm">
+        <div style={{ ...t.small, color: c.warmDeep }}>
+          <b style={{ fontWeight: 660 }}>個別の返答文は引用できません。</b>
+          {' '}渡せるのは傾向を示す数値だけです（就業規則 第6条第5項）。
+          他の Support の数値も渡りません — <b style={{ fontWeight: 660 }}>「誰と比べて」は出しません。</b>
         </div>
       </Card>
       <Spacer />

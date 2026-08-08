@@ -34,6 +34,7 @@ export const c = {
   toggleOff: '#ddd8ce',
   radioOff: '#c4beb4',
   segBg: '#e6e2da',
+  quote: '#3f3d38',      // 条文の引用。本文より少しだけ濃い
   chipBg: '#f2efe9',
   chipText: '#6b6862',
 } as const;
