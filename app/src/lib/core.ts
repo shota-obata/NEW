@@ -38,6 +38,7 @@ export type Journey = { id: string; staff_id: string; vision: string | null; cur
 export type CP = {
   id: string; journey_id: string; code: string; title: string;
   required_evidence: number; os_passed_at: string | null;
+  submitted_at: string | null;              // 本人が「見てもらう」を押した時刻
   support_decided_at: string | null; support_note: string | null; status: string;
 };
 
@@ -75,6 +76,67 @@ export async function addCheckpoint(journey_id: string, code: string, title: str
     .insert({ journey_id, code, title, required_evidence: 3 });
   return !error;
 }
+
+// 本人が出す。1段目が通っただけでは2段目に進まない。
+// 出す一拍を本人に持たせるのが目的なので、自動で渡さない。
+// 取り消せる — 後戻りできないと、出しにくくなる
+export async function submitForReview(cp_id: string, on = true) {
+  const { error } = await sb.from('checkpoints')
+    .update({ submitted_at: on ? new Date().toISOString() : null }).eq('id', cp_id);
+  return !error;
+}
+
+// 「2週間後にもう一度声をかけてもらう」。断った回数は数えない
+export async function snoozeNudge(subject_id: string | null, kind: string) {
+  await sb.rpc('snooze_nudge', { p_subject: subject_id, p_kind: kind });
+}
+
+// ---- パーソナルスペース（区分01）----------------------------------
+// Support / Management には存在も件数も返らない。
+// 「裏」に開示先を作れないことは DB が守っている（UIの話ではない）。
+export type Note = {
+  id: string; visibility: 'surface' | 'private'; body: string;
+  created_at: string; updated_at: string;
+};
+
+export const notes = async (visibility: 'surface' | 'private') =>
+  ((await sb.from('personal_notes').select('*').eq('visibility', visibility)
+      .order('updated_at', { ascending: false })).data ?? []) as Note[];
+
+export async function addNote(visibility: 'surface' | 'private', body: string) {
+  const { data: u } = await sb.auth.getUser(); if (!u.user) return false;
+  const { error } = await sb.from('personal_notes')
+    .insert({ user_id: u.user.id, visibility, body });
+  return !error;
+}
+
+export async function saveNote(id: string, body: string) {
+  const { error } = await sb.from('personal_notes').update({ body }).eq('id', id);
+  return !error;
+}
+
+export const removeNote = (id: string) =>
+  sb.from('personal_notes').delete().eq('id', id);
+
+// 開示先は担当Supportだけ。「裏」には作れない（DBのトリガが弾く）
+export async function shareNote(note_id: string) {
+  const { data: u } = await sb.auth.getUser(); if (!u.user) return false;
+  const { data } = await sb.from('assignments')
+    .select('support_id').eq('staff_id', u.user.id).eq('active', true).limit(1);
+  const sup = (data?.[0] as { support_id: string } | undefined)?.support_id;
+  if (!sup) return false;
+  const { error } = await sb.from('personal_note_shares')
+    .insert({ note_id, shared_with: sup, owner_id: u.user.id });
+  return !error;
+}
+
+export const noteShares = async (note_id: string) =>
+  ((await sb.from('personal_note_shares').select('shared_with').eq('note_id', note_id))
+    .data ?? []).length;
+
+// 共有端末では「裏」を出さない。消すのではなく、出さないことを伝える
+export const isSharedDevice = () =>
+  localStorage.getItem('gos.device_kind') === 'shared';
 
 // 2段目。Support だけが押せる（RLS）。到達は両方揃ったときだけ
 export async function supportDecide(cp_id: string, note: string) {

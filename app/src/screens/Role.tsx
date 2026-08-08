@@ -21,7 +21,7 @@ const R: { key: Role; label: string; sub: string }[] = [
 
 export function RoleSwitch(p: {
   current: Role; name: string | null; personCode: string | null;
-  onPick: (r: Role) => void; onSignOut: () => void;
+  onPick: (r: Role) => void; onSignOut: () => void; onPersonal: () => void;
 }) {
   const [direct, setDirect] = useState(false);
 
@@ -60,12 +60,18 @@ export function RoleSwitch(p: {
         })}
       </div>
 
-      {/* 区分03。日常の画面には出さない。この画面にだけ置く（第1便 B）*/}
+      {/* 区分01・03。日常の画面には出さない。この画面にだけ置く */}
       {p.current === 'staff' && (
-        <div style={{ marginTop: 22, paddingTop: 16, borderTop: `1px solid ${c.line}` }}>
+        <div style={{ marginTop: 22, paddingTop: 16, borderTop: `1px solid ${c.line}`,
+                      display: 'grid', gap: 14 }}>
+          <button onClick={p.onPersonal}
+            style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
+                     font: 'inherit', fontSize: 13, color: c.weak, textAlign: 'left' }}>
+            パーソナルスペース
+          </button>
           <button onClick={() => setDirect(true)}
             style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
-                     font: 'inherit', fontSize: 13, color: c.weak }}>
+                     font: 'inherit', fontSize: 13, color: c.weak, textAlign: 'left' }}>
             Management に直接伝える
           </button>
         </div>

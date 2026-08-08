@@ -17,6 +17,7 @@ import { MgmtHome, Quality, Devices, Design, StoreSettingsScreen,
 import { JourneyScreen, CapMap, InboxScreen, PostNotice, Holds,
          NewCheckpoint, NextQuestion } from './screens/Core';
 import { RoleSwitch } from './screens/Role';
+import { Personal } from './screens/Personal';
 import { currentCP, myJourney, checkpoints } from './lib/core';
 import { assignedStaff } from './lib/support';
 import { gateOpen } from './lib/mgmt';
@@ -116,11 +117,15 @@ export function App() {
       : { nav: <MgmtNav items={tabs.mgmt} at={nav} onGo={go} /> };
 
   // ---- 役割の切替（兼務がいる。小畑さんは Support ＋ Staff）----
-  if (nav === 'role') return (
+  if (nav === 'role') {
+    if (sub === 'personal') return <Personal onBack={() => setSub(null)} />;
+    return (
     <RoleSwitch current={role} name={name} personCode={code}
+      onPersonal={() => setSub('personal')}
       onPick={(r) => { setRole(r); setNav('home'); }}
       onSignOut={async () => { await signOut(); setGate('login'); }} />
-  );
+    );
+  }
 
   // ---- 共通 ----
   if (nav === 'inbox') return (

@@ -12,7 +12,7 @@ import {
   softDelete, restore, postNotice,
   inboxRows, canReply, askAbout, storeSettings, currentCP, cpConditions, holdCards,
   shareTargets, shareWith, setVision, createCheckpoint, condLabel, FIELD_LABEL,
-  nextQuestions, deliverQuestion,
+  nextQuestions, deliverQuestion, submitForReview, snoozeNudge,
   type ShareTargets, type CondDraft, type CondKind, type NextQDraft,
   type Consult, type Journey, type CP, type Axis, type Param, type Val,
   type InboxRow, type StoreSettings, type CondRow,
@@ -249,8 +249,36 @@ export function JourneyScreen(p: {
         )}
       </Card>
 
-      {/* ---- 2段目 · SUPPORT。1段目が通るまで出さない（押せないボタンを見せない）---- */}
-      {os && (
+      {/* 1段目が通ったら、本人が出す。出すまで2段目に進まない。
+          出す一拍を本人に持たせるのが目的なので、自動で渡さない */}
+      {os && !cp.submitted_at && !p.canDecide && (
+        <>
+          <Spacer h={12} />
+          <Card tone="warm">
+            <Kicker>あなたが出すまで、進みません</Kicker>
+            <p style={{ margin: '11px 0 0', fontSize: 13, lineHeight: 1.85, color: c.warmDeep }}>
+              条件は揃いました。
+              <b style={{ fontWeight: 660 }}>出しても落ちません。</b>
+              {' '}まだ早いと{sup}が思えば、足すものを1つ書いて預かるだけです。
+            </p>
+            <Spacer h={13} />
+            <div style={{ display: 'grid', gap: 8 }}>
+              <Button onClick={async () => { await submitForReview(cp.id); load(); }}>
+                {sup}に見てもらう
+              </Button>
+              <Button variant="ghost" onClick={() => setAsk(true)}>
+                不安なところを先に話したい
+              </Button>
+              <Button variant="ghost" onClick={async () => {
+                await snoozeNudge(cp.id, 'cp_not_submitted'); load();
+              }}>2週間後にもう一度声をかけてもらう</Button>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {/* ---- 2段目 · SUPPORT。本人が出すまで出さない ---- */}
+      {os && (cp.submitted_at || p.canDecide) && (
         <>
           <Spacer h={12} />
           <Card tone={decided ? 'teal' : 'warm'}>
@@ -264,11 +292,23 @@ export function JourneyScreen(p: {
                 </p>
               </>
             ) : p.canDecide ? (
-              <CpDecide cp={cp} onDone={load} />
+              cp.submitted_at ? <CpDecide cp={cp} onDone={load} /> : (
+                <p style={{ margin: '11px 0 0', ...t.small, color: c.warmDeep, lineHeight: 1.85 }}>
+                  条件は揃っていますが、本人がまだ出していません。
+                  こちらからは進めません。
+                </p>
+              )
             ) : (
-              <p style={{ margin: '11px 0 0', ...t.small, color: c.warmDeep, lineHeight: 1.85 }}>
-                条件は揃っています。{sup}が見ています。
-              </p>
+              <>
+                <p style={{ margin: '11px 0 0', ...t.small, color: c.warmDeep, lineHeight: 1.85 }}>
+                  出しました。{sup}が見ています。
+                </p>
+                <div style={{ marginTop: 11 }}>
+                  <Button variant="ghost" onClick={async () => {
+                    await submitForReview(cp.id, false); load();
+                  }}>やっぱり取り下げる</Button>
+                </div>
+              </>
             )}
           </Card>
         </>
