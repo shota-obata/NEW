@@ -12,12 +12,14 @@ import { Consent, PolicyFull } from './screens/Policy';
 import { Home, Practice } from './screens/Staff';
 import { Settings } from './screens/Settings';
 import { SupportHome, SharedRecord, StaffList, StaffDetail } from './screens/Support';
-import { MgmtHome, Quality, Devices } from './screens/Mgmt';
+import { MgmtHome, Quality, Devices, Design, StoreSettingsScreen,
+         ViewLock, PolicyNudge, BusinessHours, Retirement } from './screens/Mgmt';
 import { JourneyScreen, CapMap, InboxScreen, PostNotice, Holds,
          NewCheckpoint, NextQuestion } from './screens/Core';
 import { RoleSwitch } from './screens/Role';
 import { currentCP, myJourney, checkpoints } from './lib/core';
 import { assignedStaff } from './lib/support';
+import { gateOpen } from './lib/mgmt';
 import { myStore } from './lib/staff';
 import { Screen, Bar, P, Spacer, TabBar, Pills, MgmtNav, type Item } from './ui/kit';
 import { loginGate, session, signOut, me, chosenRole, type Next, type Role } from './lib/api';
@@ -57,6 +59,7 @@ export function App() {
   const [cpCtx, setCpCtx] = useState<
     { journeyId: string; nextCode: string; existing: string[]; cpId?: string } | null>(null);
   const [targets, setTargets] = useState<{ id: string; display_name: string }[]>([]);
+  const [gateOk, setGateOk] = useState<boolean | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -76,6 +79,7 @@ export function App() {
       // 通達の「対象」に入れられるのは担当スタッフだけ
       assignedStaff().then((xs) =>
         setTargets(xs.map((x) => ({ id: x.id, display_name: x.display_name }))));
+      gateOpen().then(setGateOk);
     })();
   }, []);
 
@@ -133,16 +137,37 @@ export function App() {
 
   // ---- Management ----
   if (role === 'mgmt') {
-    if (nav === 'view') return <Quality nav={bar} onBack={home} />;
+    // 閲覧。3条件が揃うまでロック画面。開くボタンは置かない（第5便 AN）
+    if (nav === 'view') {
+      if (sub === 'nudge') return <PolicyNudge nav={bar} onBack={() => setSub(null)} />;
+      return gateOk === null ? (
+        <Screen {...bar} bar={<Bar title="閲覧" />}><Spacer h={30} />
+          <P>確認しています…</P></Screen>
+      ) : gateOk ? (
+        <Quality nav={bar} onBack={home} />
+      ) : (
+        <ViewLock nav={bar} onNudge={() => setSub('nudge')}
+          onPolicy={() => setSub('policy')} />
+      );
+    }
+    if (nav === 'design') return (
+      <Design nav={bar} onQuality={() => go('view')} onBack={home} />
+    );
     if (nav === 'devices') return <Devices nav={bar} onBack={home} />;
     if (nav === 'notice') return <PostNotice kind="mgmt_to_all" nav={bar} onBack={home} />;
-    if (nav === 'settings') return (
-      <Settings name={name} personCode={code}
-        onPolicy={() => setSub('policy')}
-        onSignOut={async () => { await signOut(); setGate('login'); }}
-        onDevices={() => go('devices')} onBack={home} />
-    );
+    if (nav === 'settings') {
+      if (sub === 'hours') return <BusinessHours nav={bar} onBack={() => setSub(null)} />;
+      if (sub === 'retire') return <Retirement nav={bar} onBack={() => setSub(null)} />;
+      return (
+        <StoreSettingsScreen nav={bar}
+          onHours={() => setSub('hours')}
+          onRetirement={() => setSub('retire')}
+          onPolicy={() => setSub('policy')}
+          onBack={home} />
+      );
+    }
     return <MgmtHome name={name} nav={bar} onQuality={() => go('view')}
+             onDesign={() => go('design')}
              onSettings={() => go('settings')} />;
   }
 
