@@ -11,7 +11,9 @@ import {
   consults, ask, replyTo, myJourney, supportDecide, hold, axes, params, values, markRead,
   softDelete, restore, postNotice,
   inboxRows, canReply, askAbout, storeSettings, currentCP, cpConditions, holdCards,
-  shareTargets, shareWith, setVision, type ShareTargets,
+  shareTargets, shareWith, setVision, createCheckpoint, condLabel, FIELD_LABEL,
+  nextQuestions, deliverQuestion,
+  type ShareTargets, type CondDraft, type CondKind, type NextQDraft,
   type Consult, type Journey, type CP, type Axis, type Param, type Val,
   type InboxRow, type StoreSettings, type CondRow,
 } from '../lib/core';
@@ -777,11 +779,21 @@ export function Sheet(p: { children: React.ReactNode; onClose: () => void }) {
 // 通達をつくる
 // ============================================================
 
-export function PostNotice(p: { kind: 'support_to_mgmt' | 'mgmt_to_all' | 'mgmt_to_support'; onBack: () => void ; nav?: NavSlots}) {
+const CATS = ['シフト・時間', '担当関係', 'Checkpointの設計', '設備・材料'] as const;
+
+export function PostNotice(p: {
+  kind: 'support_to_mgmt' | 'mgmt_to_all' | 'mgmt_to_support';
+  targets?: { id: string; display_name: string }[];   // 対象に入れられるのは担当スタッフだけ
+  onBack: () => void; nav?: NavSlots;
+}) {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [cat, setCat] = useState<string | null>(null);
+  const [subject, setSubject] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+
+  const subjectName = p.targets?.find((x) => x.id === subject)?.display_name;
 
   const T = {
     support_to_mgmt: { h: '現場の判断を、設計の議題に上げます。', r: 'Staffには表示されません' },
@@ -793,15 +805,51 @@ export function PostNotice(p: { kind: 'support_to_mgmt' | 'mgmt_to_all' | 'mgmt_
     <Screen {...p.nav} bar={<Bar title="通達をつくる" right={T.r} />}
       footer={
         <div style={{ display: 'grid', gap: 9 }}>
-          <Button disabled={!title.trim() || !body.trim() || busy || done} onClick={async () => {
+          <Button disabled={!title.trim() || !body.trim() || busy || done
+                            || (p.kind === 'support_to_mgmt' && !cat)} onClick={async () => {
             setBusy(true);
-            const ok = await postNotice({ kind: p.kind, title: title.trim(), body: body.trim() });
+            const ok = await postNotice({
+              kind: p.kind, title: title.trim(), body: body.trim(),
+              category: cat ?? undefined, subject_user_id: subject ?? undefined,
+            });
             setBusy(false); if (ok) setDone(true);
           }}>{done ? '送信しました' : busy ? '送っています…' : '通達する'}</Button>
           <Button variant="ghost" onClick={p.onBack}>戻る</Button>
         </div>
       }>
       <H>{T.h}</H>
+
+      {/* Staff には表示されない、を図形で示す（Support 3）*/}
+      {p.kind === 'support_to_mgmt' && (
+        <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <svg width="11" height="9" viewBox="0 0 11 9" aria-hidden>
+            <rect x=".5" y=".5" width="10" height="8" rx="1.5"
+                  fill="none" stroke={c.label} />
+            <path d="M.5 1.5 5.5 5 10.5 1.5" fill="none" stroke={c.label} />
+          </svg>
+          <span style={{ fontSize: 11, color: c.weaker }}>Staffには表示されません</span>
+        </div>
+      )}
+
+      {/* 種類チップ */}
+      {p.kind === 'support_to_mgmt' && (
+        <div style={{ marginTop: 16 }}>
+          <Kicker>種類</Kicker>
+          <div style={{ marginTop: 10, display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+            {CATS.map((k) => (
+              <button key={k} onClick={() => setCat(k)}
+                style={{ padding: '9px 13px', borderRadius: r.pill, cursor: 'pointer',
+                         font: 'inherit', fontSize: 11.5, fontWeight: 700,
+                         color: cat === k ? c.tealText : c.weak,
+                         background: cat === k ? c.tealBg : 'transparent',
+                         border: `1px solid ${cat === k ? c.teal : c.line}` }}>
+                {k}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <Spacer h={18} />
       <div style={{ display: 'grid', gap: 12 }}>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="題名"
@@ -811,6 +859,35 @@ export function PostNotice(p: { kind: 'support_to_mgmt' | 'mgmt_to_all' | 'mgmt_
         <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="本文"
           style={{ ...area, minHeight: 120 }} />
       </div>
+      {/* 対象（任意）。入れられるのは担当スタッフだけ。
+          本人について書いたものが本人に見えない状態は、この設計では作らない */}
+      {p.kind === 'support_to_mgmt' && p.targets && p.targets.length > 0 && (
+        <>
+          <Spacer h={16} />
+          <div style={{ padding: '14px 16px', borderRadius: r.input,
+                        border: `1.5px dashed ${c.dash}` }}>
+            <div style={t.field}>対象（任意）</div>
+            <div style={{ marginTop: 10, display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+              {p.targets.map((x) => (
+                <button key={x.id} onClick={() => setSubject(subject === x.id ? null : x.id)}
+                  style={{ padding: '8px 12px', borderRadius: r.pill, cursor: 'pointer',
+                           font: 'inherit', fontSize: 11.5, fontWeight: 700,
+                           color: subject === x.id ? c.tealText : c.weak,
+                           background: subject === x.id ? c.tealBg : 'transparent',
+                           border: `1px solid ${subject === x.id ? c.teal : c.line}` }}>
+                  {x.display_name}
+                </button>
+              ))}
+            </div>
+            <p style={{ margin: '11px 0 0', fontSize: 12, lineHeight: 1.7, color: c.weaker }}>
+              {subject
+                ? <><b style={{ fontWeight: 660, color: c.text }}>入れると、この通達は{subjectName}さんにも見えます。</b>本人に読まれる前提で書いてください。</>
+                : '対象を入れないと、Management の2名だけが読みます。'}
+            </p>
+          </div>
+        </>
+      )}
+
       <Spacer />
       {p.kind === 'mgmt_to_all' && (
         <Warn>
@@ -952,3 +1029,282 @@ export function ShareSheet(p: {
     </Sheet>
   );
 }
+
+// ============================================================
+// Checkpoint を作る（Support）— 条件と、到達したら次に問うこと
+//
+// Support に JSON は書かせない。種類3択＋件数＋自動生成の label。
+// 条件は3つまで — 4つ以上は CP を2つに割るサイン。
+//
+// 次の問いは、ここで一緒に書く。到達の瞬間には何も生成しない。
+// 「到達したら次に何を問うか」を書けない CP は、条件の切り方がまだ荒い CP。
+// ここで詰まるほうが、到達の瞬間に詰まるよりいい。
+// ============================================================
+
+export function NewCheckpoint(p: {
+  journeyId: string; nextCode: string; existing: string[];
+  onDone: () => void; onCancel: () => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [conds, setConds] = useState<CondDraft[]>([]);
+  const [qs, setQs] = useState<Record<string, NextQDraft>>({
+    as_is:       { kind: 'as_is',       body: '', reason: '' },
+    smaller:     { kind: 'smaller',     body: '', reason: '' },
+    shift_area:  { kind: 'shift_area',  body: '', reason: '' },
+  });
+  const [busy, setBusy] = useState(false);
+
+  const add = (kind: CondKind) => {
+    if (conds.length >= 3) return;
+    const base = { kind, count: kind === 'cp_reached' ? 1 : 3,
+                   field: 'misjudgment' as const, code: p.existing[0] ?? 'CP1' };
+    setConds((s) => [...s, { id: `c${s.length + 1}`, ...base, label: condLabel(base) }]);
+  };
+
+  const patch = (i: number, v: Partial<CondDraft>) =>
+    setConds((s) => s.map((x, k) => {
+      if (k !== i) return x;
+      const next = { ...x, ...v };
+      // label は自動で作り直す。手で直したものは触らない
+      if (v.label === undefined && x.label === condLabel(x)) next.label = condLabel(next);
+      return next;
+    }));
+
+  const ok = title.trim() && conds.length > 0
+          && qs.as_is.body.trim() && qs.as_is.reason.trim();
+
+  return (
+    <Screen bar={<Bar title="Checkpoint を置く" right={p.nextCode} />}
+      footer={
+        <div style={{ display: 'grid', gap: 8 }}>
+          <Button disabled={!ok || busy} onClick={async () => {
+            setBusy(true);
+            const id = await createCheckpoint({
+              journey_id: p.journeyId, code: p.nextCode, title: title.trim(),
+              conditions: conds, questions: Object.values(qs),
+            });
+            setBusy(false);
+            if (id) p.onDone();
+          }}>この Checkpoint を置く</Button>
+          <Button variant="ghost" onClick={p.onCancel}>やめる</Button>
+        </div>
+      }>
+
+      <H>何を確かめますか。</H>
+      <Spacer h={18} />
+      <textarea value={title} onChange={(e) => setTitle(e.target.value)}
+        placeholder="骨格が違っても、同じ基準で似合わせを説明できる"
+        style={{ ...area, minHeight: 68 }} />
+
+      {/* ---- 条件（3つまで）---- */}
+      <Spacer />
+      <Kicker>通過の条件（3つまで）</Kicker>
+      <div style={{ marginTop: 12, display: 'grid', gap: 11 }}>
+        {conds.map((d, i) => (
+          <Card key={d.id} tone="flat">
+            <div style={{ display: 'flex', alignItems: 'baseline',
+                          justifyContent: 'space-between', gap: 10 }}>
+              <span style={t.field}>条件 {i + 1}</span>
+              <button onClick={() => setConds((s) => s.filter((_, k) => k !== i))}
+                style={{ background: 'transparent', border: 0, cursor: 'pointer',
+                         font: 'inherit', fontSize: 11.5, color: c.weaker }}>外す</button>
+            </div>
+
+            <div style={{ marginTop: 11, display: 'grid', gap: 9 }}>
+              {d.kind === 'record_field' && (
+                <select value={d.field}
+                  onChange={(e) => patch(i, { field: e.target.value as CondDraft['field'] })}
+                  style={selectStyle}>
+                  {Object.entries(FIELD_LABEL).map(([k, v]) =>
+                    <option key={k} value={k}>{v}</option>)}
+                </select>
+              )}
+              {d.kind === 'cp_reached' ? (
+                <select value={d.code} onChange={(e) => patch(i, { code: e.target.value })}
+                  style={selectStyle}>
+                  {p.existing.map((x) => <option key={x} value={x}>{x}</option>)}
+                </select>
+              ) : (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 12.5, color: c.weak }}>件数</span>
+                  <input type="number" min={1} max={20} value={d.count}
+                    onChange={(e) => patch(i, { count: Math.max(1, +e.target.value || 1) })}
+                    style={{ ...selectStyle, width: 84 }} />
+                </label>
+              )}
+
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span style={{ fontSize: 11, color: c.weaker }}>本人の画面に出る文</span>
+                <input value={d.label} onChange={(e) => patch(i, { label: e.target.value })}
+                  style={selectStyle} />
+              </label>
+            </div>
+          </Card>
+        ))}
+
+        {conds.length < 3 ? (
+          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+            {([['shared_records', '記録が n件'],
+               ['record_field', '特定の欄が埋まった記録が n件'],
+               ['cp_reached', '別のCPに到達']] as [CondKind, string][])
+              .filter(([k]) => k !== 'cp_reached' || p.existing.length > 0)
+              .map(([k, label]) => (
+                <button key={k} onClick={() => add(k)}
+                  style={{ padding: '9px 13px', borderRadius: r.pill, cursor: 'pointer',
+                           font: 'inherit', fontSize: 11.5, fontWeight: 700, color: c.weak,
+                           background: 'transparent', border: `1.5px dashed ${c.dash}` }}>
+                  ＋ {label}
+                </button>
+              ))}
+          </div>
+        ) : (
+          <div style={{ ...t.small, color: c.weaker }}>
+            条件は3つまでです。4つ以上要るなら、Checkpoint を2つに割るほうが早く進みます。
+          </div>
+        )}
+      </div>
+
+      {/* ---- 到達したら、次に問うこと ---- */}
+      <Spacer />
+      <Kicker>到達したら、次に問うこと</Kicker>
+      <div style={{ marginTop: 12, display: 'grid', gap: 14 }}>
+        {([['as_is', 'そのまま', true],
+           ['smaller', '小さくする', false],
+           ['shift_area', '領域を変える', false]] as [NextQDraft['kind'], string, boolean][])
+          .map(([k, label, req]) => (
+            <div key={k}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <b style={{ fontSize: 13, fontWeight: 640 }}>{label}</b>
+                <span style={{ fontSize: 10.5, fontWeight: 700,
+                               color: req ? c.warmText : c.label }}>
+                  {req ? '必須' : '任意'}
+                </span>
+              </div>
+              <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+                <input value={qs[k].body}
+                  onChange={(e) => setQs((s) => ({ ...s, [k]: { ...s[k], body: e.target.value } }))}
+                  placeholder="問い" style={selectStyle} />
+                <input value={qs[k].reason}
+                  onChange={(e) => setQs((s) => ({ ...s, [k]: { ...s[k], reason: e.target.value } }))}
+                  placeholder="なぜこの問いか" style={selectStyle} />
+              </div>
+            </div>
+          ))}
+      </div>
+      <div style={{ marginTop: 12, ...t.small, color: c.weaker }}>
+        ここに書いたものが、到達したときに選択肢として出ます。空の欄は、そのときに書けます。
+      </div>
+      <Spacer />
+    </Screen>
+  );
+}
+
+// ============================================================
+// 次の問いを調整（Support 4）
+//
+// 生成していないので「GROWTH OSから」とは書かない。
+// ここに出るのは、この Checkpoint に書いてあったものだけ。
+// ============================================================
+
+export function NextQuestion(p: {
+  cpId: string; journeyId: string; nextCode: string;
+  onDone: () => void; onBack: () => void; nav?: NavSlots;
+}) {
+  const [qs, setQs] = useState<Awaited<ReturnType<typeof nextQuestions>> | null>(null);
+  const [pick, setPick] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const [title, setTitle] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { nextQuestions(p.cpId).then(setQs); }, [p.cpId]);
+
+  const KIND: Record<string, string> = {
+    as_is: 'そのまま', smaller: '小さくする', shift_area: '領域を変える',
+  };
+  const chosen = qs?.find((x) => x.id === pick);
+  const needReason = chosen && chosen.adjust_kind !== 'as_is';
+  const ok = chosen && title.trim() && (!needReason || reason.trim().length >= 30);
+
+  return (
+    <Screen {...p.nav} bar={<Bar title="次の問い" right={p.nextCode} />}
+      footer={
+        <div style={{ display: 'grid', gap: 8 }}>
+          <Button disabled={!ok || busy} onClick={async () => {
+            if (!chosen) return;
+            setBusy(true);
+            const done = await deliverQuestion({
+              id: chosen.id, journey_id: p.journeyId,
+              kind: (chosen.adjust_kind ?? 'as_is') as 'as_is' | 'smaller' | 'shift_area',
+              reason: reason.trim(), code: p.nextCode, title: title.trim(),
+            });
+            setBusy(false);
+            if (done) p.onDone();
+          }}>この問いで渡す</Button>
+          <Button variant="ghost" onClick={p.onBack}>戻る</Button>
+        </div>
+      }>
+
+      <H>次に、何を問いますか。</H>
+
+      <Spacer h={18} />
+      {qs === null ? <P>読み込んでいます…</P> : (
+        <div style={{ display: 'grid', gap: 9 }}>
+          {qs.map((x) => (
+            <button key={x.id} onClick={() => { setPick(x.id); setTitle(x.body); }}
+              style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
+                       padding: '15px 17px', borderRadius: r.card,
+                       background: pick === x.id ? c.tealBg : c.card,
+                       border: `1px solid ${pick === x.id ? c.teal : c.cardLine}` }}>
+              {/* 生成していないものを Growth OS の名で出さない */}
+              <div style={{ ...t.kicker, color: pick === x.id ? c.tealText : c.label }}>
+                この Checkpoint に書いてあった問い · {KIND[x.adjust_kind ?? 'as_is']}
+              </div>
+              <div style={{ marginTop: 9, fontSize: 14, fontWeight: 640,
+                            color: pick === x.id ? c.tealDeep : c.text }}>{x.body}</div>
+              <p style={{ margin: '7px 0 0', ...t.small, color: c.weak }}>{x.reason}</p>
+            </button>
+          ))}
+          {qs.length === 0 && (
+            <Card tone="flat"><div style={{ ...t.small, color: c.weak }}>
+              この Checkpoint には、次の問いが書かれていません。
+              条件の切り方がまだ荒いのかもしれません。ここで書いて渡せます。
+            </div></Card>
+          )}
+        </div>
+      )}
+
+      {pick && (
+        <>
+          <Spacer />
+          <label style={{ display: 'grid', gap: 7 }}>
+            <span style={t.field}>渡す問い（直せます）</span>
+            <textarea value={title} onChange={(e) => setTitle(e.target.value)}
+              style={{ ...area, minHeight: 62 }} />
+          </label>
+
+          {needReason && (
+            <>
+              <Spacer h={14} />
+              <label style={{ display: 'grid', gap: 7 }}>
+                <span style={t.field}>調整した理由（30字以上）</span>
+                <textarea value={reason} onChange={(e) => setReason(e.target.value)}
+                  style={{ ...area, minHeight: 68 }} />
+              </label>
+              <div style={{ marginTop: 9, fontSize: 12, lineHeight: 1.7, color: c.weaker }}>
+                この理由は、本人の画面にそのまま出ます。
+                {reason.trim().length < 30 && ` あと${30 - reason.trim().length}字。`}
+              </div>
+            </>
+          )}
+        </>
+      )}
+      <Spacer />
+    </Screen>
+  );
+}
+
+const selectStyle: React.CSSProperties = {
+  width: '100%', minHeight: 44, padding: '0 13px', borderRadius: r.input,
+  border: `1px solid ${c.line}`, background: c.input, font: 'inherit',
+  fontSize: 13.5, color: c.text, outline: 'none', boxSizing: 'border-box',
+};
