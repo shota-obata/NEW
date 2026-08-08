@@ -99,7 +99,11 @@ export function RegisterDevice(p: { onDone: () => void }) {
             setBusy(true); setErr(null);
             const res = await registerDevice({ person_code: person, code, label: label.trim(), device_kind: kind });
             setBusy(false);
-            if (res.ok) p.onDone();
+            if (res.ok) {
+              // 共有端末では「裏」を出さない。判定に使うので端末側にも残す
+              localStorage.setItem('gos.device_kind', kind);
+              p.onDone();
+            }
             else { setErr(DENY_TEXT[res.reason]); setStep('code'); setCode(''); }
           }}>{busy ? '登録しています…' : '登録する'}</Button>
           <Button variant="ghost" onClick={() => setStep('code')}>戻る</Button>
