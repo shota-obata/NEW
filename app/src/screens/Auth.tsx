@@ -156,7 +156,7 @@ export function RegisterDevice(p: { onDone: () => void }) {
       <H>この端末は、誰のものですか。</H>
       {err && <><Spacer h={14} /><Warn>{err}</Warn></>}
       <Spacer h={20} />
-      <Input label="端末名" value={label} onChange={setLabel} placeholder="黒坂さんの iPhone" />
+      <Input label="端末名" value={label} onChange={setLabel} placeholder="自分のiPhone" />
       <Spacer h={20} />
       <Kicker>所有</Kicker>
       <div style={{ marginTop: 11, display: 'grid', gap: 9 }}>

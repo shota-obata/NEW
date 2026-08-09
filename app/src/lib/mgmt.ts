@@ -481,3 +481,12 @@ export const supports = async () => {
   return ((data ?? []) as unknown as { user_id: string; users: { display_name: string } | null }[])
     .map((x) => ({ id: x.user_id, name: x.users?.display_name ?? '—' }));
 };
+
+// 在籍者と店舗の数。文面に直値で書かない（人が増減すると嘘になる）
+export async function orgSize(): Promise<{ people: number; stores: number }> {
+  const { count: people } = await sb.from('users')
+    .select('id', { count: 'exact', head: true }).is('retired_at', null);
+  const { count: stores } = await sb.from('stores')
+    .select('id', { count: 'exact', head: true });
+  return { people: Math.max(0, (people ?? 1) - 1), stores: stores ?? 0 };  // Other を除く
+}

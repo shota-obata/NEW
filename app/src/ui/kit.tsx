@@ -195,17 +195,23 @@ export const TabBar = (p: { items: Item[]; at: string; onGo: (k: string) => void
   </div>
 );
 
-export const Pills = (p: { items: Item[]; at: string; onGo: (k: string) => void }) => (
+export const Pills = (p: {
+  items: Item[]; at: string; onGo: (k: string) => void; dot?: string;
+}) => (
   <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
     {p.items.map(([k, label]) => (
       <button key={k} onClick={() => p.onGo(k)}
         style={{ flex: '0 0 auto', height: h.nav, padding: '0 14px', borderRadius: r.pill,
                  cursor: 'pointer', font: 'inherit', fontSize: 11.5, fontWeight: 700,
-                 transition: press,
+                 transition: press, display: 'flex', alignItems: 'center', gap: 5,
                  background: p.at === k ? c.tealBg : 'transparent',
                  border: `1px solid ${p.at === k ? c.teal : c.line}`,
                  color: p.at === k ? c.tealText : c.weaker }}>
         {label}
+        {/* 未読は丸だけ。件数は出さない（Support の Home にカードは置かない）*/}
+        {p.dot === k && (
+          <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.teal }} />
+        )}
       </button>
     ))}
   </div>
