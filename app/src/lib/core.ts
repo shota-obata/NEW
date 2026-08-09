@@ -2,7 +2,7 @@
 //
 // 可視領域はサーバ（RLS）が担保する。画面側で絞らない。
 
-import { sb } from './api';
+import { sb, unwrap } from './api';
 
 // ---- 相談と返答（区分02）---------------------------------------------
 export type Consult = {
@@ -253,10 +253,18 @@ export type Inbox = {
   read_at: string | null; created_at: string;
 };
 
+// 配信時刻が来ていないものは、まだ「届いていない」。
+// 受信ボックスにも出さない — Home の一行と規則を揃える。
+// 揃えないと、Home が「未読があります」と言うのに一覧が空になる。
+export const DELIVERED = () =>
+  `deliver_after.is.null,deliver_after.lte.${new Date().toISOString()}`;
+
 export const inbox = async (trash = false) => {
-  const q = sb.from('inbox_items').select('*').order('created_at', { ascending: false }).limit(40);
-  const { data } = await (trash ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null));
-  return (data ?? []) as Inbox[];
+  const q = sb.from('inbox_items').select('*')
+    .or(DELIVERED())
+    .order('created_at', { ascending: false }).limit(40);
+  return unwrap('inbox',
+    await (trash ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null))) as Inbox[];
 };
 
 export const markRead = (id: string) =>
@@ -717,6 +725,6 @@ export async function hasUnread(): Promise<boolean> {
   const { count } = await sb.from('inbox_items')
     .select('id', { count: 'exact', head: true })
     .is('read_at', null).is('deleted_at', null)
-    .or(`deliver_after.is.null,deliver_after.lte.${new Date().toISOString()}`);
+    .or(DELIVERED());          // 受信ボックスと同じ規則を使う
   return (count ?? 0) > 0;
 }
