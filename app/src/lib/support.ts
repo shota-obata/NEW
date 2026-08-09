@@ -21,10 +21,17 @@ export async function assignedStaff(): Promise<Staff[]> {
     .filter((x): x is Staff => !!x);
 }
 
-// 共有された記録。shared_at が入っているものだけ
+// 共有された記録。shared_at が入っているものだけ。
+//
+// RLS は「担当しているStaffの記録」に絞るが、**自分の記録も返す**（本人だから）。
+// Support として見る画面なので、自分の分は外す。
+// これを外さないと、兼務の人の Home に自分の記録が「担当スタッフの記録」として並ぶ。
 export async function sharedRecords(): Promise<(Record_ & { staff_id: string })[]> {
+  const { data: u } = await sb.auth.getUser();
+  if (!u.user) return [];
   const { data } = await sb.from('practice_records')
     .select('*').not('shared_at', 'is', null).is('deleted_at', null)
+    .neq('staff_id', u.user.id)
     .order('shared_at', { ascending: false }).limit(30);
   return (data ?? []) as (Record_ & { staff_id: string })[];
 }

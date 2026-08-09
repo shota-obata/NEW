@@ -25,7 +25,7 @@ export function SupportHome(p: {
   const [staff, setStaff] = useState<Staff[] | null>(null);
   const [recs, setRecs] = useState<(Record_ & { staff_id: string })[] | null>(null);
 
-  const [seenIds, setSeenIds] = useState<string[]>([]);
+  const [seenIds, setSeenIds] = useState<string[] | null>(null);
   const [att, setAtt] = useState<Attention[] | null>(null);
   const [st, setSt] = useState<StoreSettings | null>(null);
 
@@ -40,8 +40,11 @@ export function SupportHome(p: {
   const hot     = (att ?? []).filter(needsAction);
   const waiting = (att ?? []).filter((a) => a.stalled);
 
-  // 自分がまだ開いていないもの。古い順に片づける形にする
-  const unread = (recs ?? []).filter((x) => !seenIds.includes(x.id))
+  // 自分がまだ開いていないもの。古い順に片づける形にする。
+  // 既読の一覧が届くまでは数えない — 届く前に数えると全部が未読に見えて、
+  // カードが出てから消える
+  const unread = (recs === null || seenIds === null ? [] : recs)
+    .filter((x) => !seenIds!.includes(x.id))
     .slice().sort((a, b) => (a.shared_at ?? '').localeCompare(b.shared_at ?? ''));
 
   const nameOf = (id: string) => staff?.find((s) => s.id === id)?.display_name ?? '—';
