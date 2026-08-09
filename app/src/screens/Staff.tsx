@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer , type NavSlots } from '../ui/kit';
 import { c, t, r, serif } from '../ui/tokens';
-import { myHolds, myNudge, latestNotice, type Notice } from '../lib/core';
+import { myHolds, myNudge, latestNotice, hasUnread, type Notice } from '../lib/core';
 import { ConsultSheet, ShareSheet } from './Core';
 import {
   myRecords, myStore, storeState, createRecord, saveRecord, getRecord,
@@ -30,12 +30,14 @@ export function Home(p: { name: string | null; onOpen: (id: string) => void; onN
   const [hd, setHd] = useState<{ id: string; reason: string; add_what: string }[]>([]);
   const [nudge, setNudge] = useState<Awaited<ReturnType<typeof myNudge>>>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [unread, setUnread] = useState(false);
 
   useEffect(() => {
     myRecords(5).then(setRecs);
     myHolds().then(setHd);
     myNudge().then(setNudge);
     latestNotice().then(setNotice);
+    hasUnread().then(setUnread);
     myStore().then((s) => s && storeState(s.id).then(setSt));
   }, []);
 
@@ -60,6 +62,23 @@ export function Home(p: { name: string | null; onOpen: (id: string) => void; onN
             {' '}記録は書けますが、義務ではありません（就業規則 第2条第3項）。
           </div>
         </Card></>
+      )}
+
+      {/* プッシュが届かない人への担保。件数は出さない。
+          未読が0件のときは行ごと出さない（AX-2）*/}
+      {unread && (
+        <button onClick={p.onInbox}
+          style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
+                   marginTop: 16, padding: '12px 14px', borderRadius: r.input,
+                   background: c.tealBg, border: `1px solid ${c.tealLine}`,
+                   display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ width: 5, height: 5, borderRadius: '50%', flex: '0 0 auto',
+                         background: c.teal }} />
+          <span style={{ flex: 1, fontSize: 12.5, color: c.tealDeep }}>
+            受信ボックスに、まだ読んでいないものがあります。
+          </span>
+          <span style={{ color: c.tealText, fontSize: 14 }}>›</span>
+        </button>
       )}
 
       {/* 催促。自動で出るものにも「SUPPORTから」と書く —

@@ -25,13 +25,57 @@ const DENY_TEXT: Record<Deny, string> = {
 // ============================================================
 
 export function RegisterDevice(p: { onDone: () => void }) {
-  const [step, setStep] = useState<'intro' | 'code' | 'label'>('intro');
+  const [step, setStep] = useState<'intro' | 'code' | 'label' | 'done'>('intro');
   const [person, setPerson] = useState('');
   const [code, setCode] = useState('');
   const [label, setLabel] = useState('');
   const [kind, setKind] = useState<'personal' | 'shared'>('personal');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // 3/3 完了。ここで「ホーム画面に追加」を案内する。
+  // 強制しない — 追加していない人には、Home の一行で気づく形にしてある（AX-2）
+  if (step === 'done') return (
+    <Screen bar={<Bar title="端末の登録" right="3 / 3" />}
+      footer={<Button onClick={p.onDone}>PINでサインインする</Button>}>
+
+      <H>この端末を登録しました。</H>
+
+      <Spacer h={18} />
+      <Card tone="teal">
+        <div style={{ display: 'grid', gap: 8, ...t.small, color: c.tealDeep }}>
+          <div>端末名　{label.trim()}</div>
+          <div>所有　　{kind === 'shared' ? '店舗の共有端末' : '個人の端末'}</div>
+          <div>登録日　{new Date().toISOString().slice(0, 10)}</div>
+        </div>
+      </Card>
+
+      <Spacer h={14} />
+      <Card>
+        <Kicker>ホーム画面に追加すると、通知が届きます</Kicker>
+        <div style={{ marginTop: 11, display: 'grid', gap: 9, ...t.small, color: c.weak }}>
+          <div>1　画面の下（または上）の共有ボタンを押す</div>
+          <div>2　「ホーム画面に追加」を選ぶ</div>
+          <div>3　「追加」を押す</div>
+        </div>
+        <div style={{ marginTop: 11, fontSize: 11.5, lineHeight: 1.7, color: c.weaker }}>
+          いまでなくても構いません。追加していない場合は、
+          アプリを開いたときに未読があることをお知らせします。
+        </div>
+      </Card>
+
+      <Spacer h={14} />
+      <Card tone="flat">
+        <Kicker>この登録が残る先</Kicker>
+        <div style={{ marginTop: 10, display: 'grid', gap: 7, ...t.small, color: c.weak }}>
+          <div>あなたの受信ボックス</div>
+          <div>Management の端末一覧</div>
+          <div>監査ログ</div>
+        </div>
+      </Card>
+      <Spacer />
+    </Screen>
+  );
 
   if (step === 'intro') return (
     <Screen bar={<Bar title="Growth OS" right="AI,re" />}
@@ -102,7 +146,7 @@ export function RegisterDevice(p: { onDone: () => void }) {
             if (res.ok) {
               // 共有端末では「裏」を出さない。判定に使うので端末側にも残す
               localStorage.setItem('gos.device_kind', kind);
-              p.onDone();
+              setStep('done');
             }
             else { setErr(DENY_TEXT[res.reason]); setStep('code'); setCode(''); }
           }}>{busy ? '登録しています…' : '登録する'}</Button>
