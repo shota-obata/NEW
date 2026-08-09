@@ -440,7 +440,9 @@ const Chip = (q: { children: React.ReactNode; on?: boolean; warn?: boolean }) =>
 // 設計（Mgmt 2）— シフトと時間境界 ／ 担当の割り当て
 // ============================================================
 
-export function Design(p: { onQuality: () => void; onBack: () => void; nav?: NavSlots }) {
+export function Design(p: {
+  onQuality: () => void; onCapDefs: () => void; onBack: () => void; nav?: NavSlots;
+}) {
   const [slots, setSlots] = useState<Slots[] | null>(null);
   const [pick, setPick] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
@@ -553,6 +555,11 @@ export function Design(p: { onQuality: () => void; onBack: () => void; nav?: Nav
           </Card>
         ))}
       </div>
+
+      {/* Capability Map の定義。個人の値は見えない（Mgmt Home の「見えないもの」）。
+          設定の中には置かない（Management 7）ので、設計に置く */}
+      <Spacer />
+      <Button variant="outline" onClick={p.onCapDefs}>Capability Map の定義</Button>
 
       <Spacer />
       <Button variant="outline" onClick={p.onQuality}>介入の質へ</Button>

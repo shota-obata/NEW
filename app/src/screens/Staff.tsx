@@ -416,6 +416,11 @@ function NewRecord(p: { storeId: string | null; onBack: () => void }) {
             setBusy(false);
             if (rec) p.onBack();
           }}>{busy ? '作っています…' : 'この題名で始める'}</Button>
+          {!p.storeId && (
+            <div style={{ ...t.small, color: c.warmText, textAlign: 'center' }}>
+              店舗が読み込めていません。通信を確かめて、開き直してください。
+            </div>
+          )}
           <Button variant="ghost" onClick={p.onBack}>やめる</Button>
         </div>
       }>
