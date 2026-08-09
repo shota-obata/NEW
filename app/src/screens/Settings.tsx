@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { Screen, Bar, H, P, Card, Kicker, Button, Spacer , type NavSlots } from '../ui/kit';
 import { c, t, r } from '../ui/tokens';
 import { getProfile, saveProfile, yearsSince, type Profile } from '../lib/staff';
+import { pushSupported, subscribePush, unsubscribePush, isSubscribed } from '../lib/push';
 
 export function Settings(p: {
   name: string | null; personCode: string | null;
@@ -16,8 +17,10 @@ export function Settings(p: {
 }) {
   const [pf, setPf] = useState<Profile | null>(null);
   const [saved, setSaved] = useState(false);
+  const [subbed, setSubbed] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => { getProfile().then(setPf); }, []);
+  useEffect(() => { getProfile().then(setPf); isSubscribed().then(setSubbed); }, []);
 
   const patch = async (v: Partial<Profile>) => {
     if (!pf) return;
@@ -96,6 +99,38 @@ export function Settings(p: {
           評価には使いません。
         </div>
       </Card>
+
+      {/* ---- 通知 ---- */}
+      <Spacer />
+      <Kicker>通知</Kicker>
+      <div style={{ marginTop: 12 }}>
+        {!pushSupported() ? (
+          <Card tone="flat">
+            <div style={{ ...t.small, color: c.weak, lineHeight: 1.9 }}>
+              この端末では通知を受け取れません。
+              <b style={{ fontWeight: 660, color: c.text }}>ホーム画面に追加すると届くようになります。</b>
+              {' '}追加していなくても、未読があればアプリを開いたときにお知らせします。
+            </div>
+          </Card>
+        ) : (
+          <>
+            <Button variant={subbed ? 'outline' : 'fill'} disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                if (subbed) { await unsubscribePush(); setSubbed(false); }
+                else { const rr = await subscribePush(); setSubbed(rr === 'ok'); }
+                setBusy(false);
+              }}>
+              {subbed ? '通知を止める' : '通知を受け取る'}
+            </Button>
+            <div style={{ marginTop: 10, ...t.small, color: c.weaker, lineHeight: 1.8 }}>
+              届くのは「受信ボックスに届いています。」の一言だけです。
+              <b style={{ fontWeight: 660, color: c.text }}>誰から何が来たかは書きません。</b>
+              {' '}画面を開かないと分からない形にしてあります。営業時間内にだけ鳴ります。
+            </div>
+          </>
+        )}
+      </div>
 
       {/* ---- 規定 ---- */}
       <Spacer />

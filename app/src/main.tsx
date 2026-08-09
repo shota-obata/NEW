@@ -16,6 +16,10 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
+// Service Worker はプッシュの受け取りだけ。
+// 登録に失敗しても画面は止めない（通知は義務ではない）
+import('./lib/push').then((m) => m.registerSW());
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode><App /></StrictMode>
 );
