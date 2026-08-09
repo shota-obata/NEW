@@ -8,12 +8,14 @@ import { useEffect, useState } from 'react';
 import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer , type NavSlots } from '../ui/kit';
 import { c, t, r } from '../ui/tokens';
 import {
-  myJourney, supportDecide, hold, axes, params, values, markRead,
+  myJourney, supportDecide, hold, params, values, markRead,
   softDelete, restore, postNotice,
   inboxRows, canReply, askAbout, storeSettings, currentCP, cpConditions, holdCards,
   shareTargets, shareWith, setVision, createCheckpoint, condLabel, FIELD_LABEL,
+  departments, levelsOf, historyOf, stepMeaning, STEPS,
+  type Dept, type Level,
   nextQuestions, deliverQuestion, submitForReview, snoozeNudge,
-  addParam, sourcePreview, SOURCE_LABEL, changeParam,
+  addParam, sourcePreview, SOURCE_LABEL,
   type ShareTargets, type CondDraft, type CondKind, type NextQDraft,
   type Journey, type CP, type Axis, type Param, type Val,
   type InboxRow, type StoreSettings, type CondRow,
@@ -423,167 +425,55 @@ export function CapMap(p: {
   staffId?: string; isMgmt?: boolean; defs?: boolean;
   onBack: () => void; nav?: NavSlots;
 }) {
-  const [ax, setAx] = useState<Axis[]>([]);
-  const [tab, setTab] = useState<'area' | 'step'>('area');
+  const [ds, setDs] = useState<Dept[] | null>(null);
+  const [open, setOpen] = useState<Axis | null>(null);   // 開いている部門
   const [ps, setPs] = useState<Param[]>([]);
   const [vs, setVs] = useState<Val[]>([]);
   const [j, setJ] = useState<Journey | null>(null);
   const [vision, setVis] = useState('');
   const [add, setAdd] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [edit, setEdit] = useState<Param | null>(null);
-  const [me, setMe] = useState<string | null>(null);
+  const [row, setRow] = useState<Param | null>(null);    // 開いている行
 
   useEffect(() => {
-    axes().then(setAx);
+    departments(p.staffId).then(setDs);
     values(p.staffId).then(setVs);
     if (!p.defs) myJourney(p.staffId).then((x) => { setJ(x); setVis(x?.vision ?? ''); });
-    import('../lib/api').then((m) => m.sb.auth.getUser())
-      .then(({ data }) => setMe(data.user?.id ?? null));
   }, [p.staffId]);
-  useEffect(() => {
-    const a = ax.find((x) => x.code === tab);
-    if (a) params(a.id, p.staffId).then(setPs);
-  }, [ax, tab, p.staffId]);
+
+  const openDept = async (a: Axis) => {
+    setOpen(a); setPs(await params(a.id, p.staffId));
+  };
+  const reload = async () => {
+    departments(p.staffId).then(setDs);
+    values(p.staffId).then(setVs);
+    if (open) setPs(await params(open.id, p.staffId));
+  };
 
   const valOf = (id: string) => vs.find((v) => v.param_id === id);
 
-  // 色は3つだけ。「未検証」は検証中と同じ配色に破線罫線を足す。
-  // 色を増やすと、状態が4段階の「評価」に見える（第2便 L）
-  const tone = (st?: string): [string, string, string] =>
-    st === '接続済み' ? [c.tealText, c.tealBg, c.tealLine]
-    : st === '検証中' ? [c.weaker, c.flat, c.line]
-    : [c.warmText, c.warmBg, c.warmLine];
+  // ---------------- 部門の中 ----------------
+  if (open) return (
+    <Screen {...p.nav} bar={<Bar title={open.label} right={`${ps.filter((x) => !x.parent_id).length} 行`} />}
+      footer={<Button variant="outline" onClick={() => setOpen(null)}>戻る</Button>}>
 
-  const Row = (q: { param: Param; sub?: boolean }) => {
-    const v = valOf(q.param.id);
-    const st = v?.status ?? '未接続';
-    const [fg, bg, ln] = tone(st);
-    const unverified = !!v?.unverified;
-    const chips = q.param.sources ?? [];
-
-    const hold = () => setEdit(q.param);
-
-    return (
-      <div onContextMenu={(e) => { e.preventDefault(); hold(); }}
-        onClick={() => editMode && hold()}
-        style={{ cursor: editMode ? 'pointer' : undefined,
-                 padding: editMode ? '11px 13px' : undefined,
-                 margin: editMode ? '-11px -13px' : undefined,
-                 borderRadius: editMode ? r.input : undefined,
-                 background: editMode ? c.flat : undefined }}>
-        <div style={{ display: 'flex', alignItems: 'baseline',
-                      justifyContent: 'space-between', gap: 10 }}>
-          <b style={{ fontSize: q.sub ? 12.5 : 14.5, fontWeight: q.sub ? 600 : 640 }}>
-            {q.param.name}
-          </b>
-          {!p.defs && (
-            <span style={{ padding: '4px 9px', borderRadius: r.pill, fontSize: 10.5,
-                           fontWeight: 700, color: fg, background: bg, flex: '0 0 auto',
-                           border: unverified ? `1px dashed ${c.dash}` : `1px solid ${ln}` }}>
-              {unverified ? '未検証' : st}
-            </span>
-          )}
-        </div>
-
-        {/* バーは value そのまま。取る値は 0/25/50/75/100 の5段階だけ */}
-        {!p.defs && <div style={{ position: 'relative', height: q.sub ? 4 : 6, marginTop: q.sub ? 6 : 9,
-                      borderRadius: r.pill, background: c.line }}>
-          <div style={{ position: 'absolute', inset: 0, width: `${v?.value ?? 0}%`,
-                        borderRadius: r.pill,
-                        background: st === '未接続' ? c.warmBar : c.teal }} />
-        </div>}
-
-        {/* ソースチップは定義側の「どこから来る値か」。記録の題名は出さない（第3便 Y）*/}
-        {!q.sub && chips.length > 0 && (
-          <div style={{ marginTop: 9, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {chips.slice(0, 3).map((sname) => <Chip key={sname}>{sname}</Chip>)}
-            {chips.length > 3 && <Chip>他 {chips.length - 3}件</Chip>}
-          </div>
-        )}
-
-        {!p.defs && !q.sub && st === '未接続' && (
-          <div style={{ marginTop: 7, fontSize: 11, lineHeight: 1.7, color: c.weaker }}>
-            まだ記録が1件も繋がっていません。
-          </div>
-        )}
-        {!p.defs && !q.sub && unverified && (
-          <div style={{ marginTop: 7, fontSize: 11, lineHeight: 1.7, color: c.weaker }}>
-            導入時の初期値のまま、90日動いていません{v?.basis ? `（${v.basis}）` : ''}。
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  return (
-    <Screen {...p.nav} bar={<Bar title="Capability Map"
-      right={p.defs ? '定義だけ' : '点数ではありません'} />}
-      footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
-
-      {/* どこへ行きたいかは本人が書く。いまどこにいるかは Support が書く。
-          現在地は自分では見えにくい。逆にすると評価面談になる */}
-      {!p.defs && <>
       <Spacer h={18} />
-      <label style={{ display: 'grid', gap: 7 }}>
-        <span style={t.field}>どこへ向かっていますか</span>
-        <textarea value={vision} onChange={(e) => setVis(e.target.value)}
-          readOnly={!!p.staffId}
-          onBlur={() => { if (!p.staffId && j && vision.trim()) setVision(j.id, vision.trim()); }}
-          placeholder="骨格が違っても、同じ基準で似合わせを説明できる"
-          style={{ width: '100%', minHeight: 68, padding: '13px 15px', borderRadius: r.input,
-                   border: `1px solid ${c.line}`, background: c.input, font: 'inherit',
-                   fontSize: 13, lineHeight: 1.8, color: c.text, outline: 'none',
-                   resize: 'vertical', boxSizing: 'border-box' }} />
-      </label>
-
-      </>}
-      {!p.defs && j?.current_position && (
-        <>
-          <Spacer h={12} />
-          <Card tone="flat">
-            <Kicker>いまの現在地</Kicker>
-            <p style={{ margin: '9px 0 0', fontSize: 13, lineHeight: 1.85, color: c.weak }}>
-              {j.current_position}
-            </p>
-            <div style={{ marginTop: 9, fontSize: 11, lineHeight: 1.7, color: c.weaker }}>
-              ここは担当のSupportが書きます。現在地は、自分では見えにくいものだからです。
-            </div>
-          </Card>
-        </>
-      )}
-
-      <div style={{ marginTop: 20, display: 'flex', gap: 8 }}>
-        {(['area', 'step'] as const).map((k) => (
-          <button key={k} onClick={() => setTab(k)}
-            style={{ flex: 1, minHeight: 42, borderRadius: r.input, cursor: 'pointer',
-                     font: 'inherit', fontSize: 12.5, fontWeight: 700,
-                     border: tab === k ? 0 : `1px solid ${c.toggleOff}`,
-                     background: tab === k ? c.tealFill : 'transparent',
-                     color: tab === k ? '#fff' : c.weaker }}>
-            {k === 'area' ? '能力領域' : '判断工程'}
-          </button>
+      <div style={{ display: 'grid', gap: 14 }}>
+        {ps.filter((x) => !x.parent_id).map((x) => (
+          <div key={x.id}>
+            <MapRow param={x} v={valOf(x.id)} defs={p.defs} onOpen={() => setRow(x)} />
+            {ps.filter((k) => k.parent_id === x.id).length > 0 && (
+              <div style={{ marginTop: 10, paddingLeft: 12,
+                            borderLeft: `2px solid ${c.line}`, display: 'grid', gap: 10 }}>
+                {ps.filter((k) => k.parent_id === x.id).map((k) => (
+                  <MapRow key={k.id} param={k} v={valOf(k.id)} defs={p.defs}
+                    sub onOpen={() => setRow(k)} />
+                ))}
+              </div>
+            )}
+          </div>
         ))}
       </div>
 
-      <div style={{ marginTop: 20, display: 'grid', gap: 16 }}>
-        {ps.filter((x) => !x.parent_id).map((x) => {
-          const subs = ps.filter((s) => s.parent_id === x.id);
-          return (
-            <div key={x.id}>
-              <Row param={x} />
-              {subs.length > 0 && (
-                <div style={{ marginTop: 10, paddingLeft: 12,
-                              borderLeft: `2px solid ${c.line}`, display: 'grid', gap: 10 }}>
-                  {subs.map((sp) => <Row key={sp.id} param={sp} sub />)}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* 自分の Map にだけ行が増える。他人の Map を開いているときは出さない */}
       {(!p.staffId || p.defs) && (
         <>
           <Spacer h={16} />
@@ -591,61 +481,251 @@ export function CapMap(p: {
             style={{ width: '100%', minHeight: 44, cursor: 'pointer', font: 'inherit',
                      fontSize: 12.5, fontWeight: 640, color: c.weak, background: 'transparent',
                      border: `1.5px dashed ${c.dash}`, borderRadius: r.input }}>
-            ＋ {tab === 'area' ? '能力領域' : '判断工程'}に追加
+            ＋ {open.label}に工程を追加
           </button>
         </>
       )}
+      <Spacer />
 
-      {/* 長押しは発見されにくいので、一行リンクを併置する */}
-      <div style={{ marginTop: 12 }}>
-        <button onClick={() => setEditMode((v) => !v)}
-          style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
-                   font: 'inherit', fontSize: 12.5,
-                   color: editMode ? c.tealText : c.weak }}>
-          {editMode ? '行を選ぶのをやめる'
-            : p.staffId ? '行のソースを変える' : '行の名称とソースを変える'}
-        </button>
+      {row && (
+        <RowSheet param={row} v={valOf(row.id)} deptLabel={open.label}
+          staffId={p.staffId} onClose={() => setRow(null)} />
+      )}
+      {add && (
+        <AddParamSheet axisId={open.id} axisName={open.label} storeCommon={!!p.defs}
+          onClose={() => setAdd(false)}
+          onAdded={() => { setAdd(false); reload(); }} />
+      )}
+    </Screen>
+  );
+
+  // ---------------- 部門の一覧 ----------------
+  return (
+    <Screen {...p.nav} bar={<Bar title="Capability Map"
+      right={p.defs ? '定義だけ' : '点数ではありません'} />}
+      footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
+
+      {/* どこへ行きたいかは本人が書く。いまどこにいるかは Support が書く */}
+      {!p.defs && (
+        <>
+          <Spacer h={18} />
+          <label style={{ display: 'grid', gap: 7 }}>
+            <span style={t.field}>どこへ向かっていますか</span>
+            <textarea value={vision} onChange={(e) => setVis(e.target.value)}
+              readOnly={!!p.staffId}
+              onBlur={() => { if (!p.staffId && j && vision.trim()) setVision(j.id, vision.trim()); }}
+              placeholder="骨格が違っても、同じ基準で似合わせを説明できる"
+              style={{ ...area, minHeight: 68 }} />
+          </label>
+
+          {j?.current_position && (
+            <>
+              <Spacer h={12} />
+              <Card tone="flat">
+                <Kicker>いまの現在地</Kicker>
+                <p style={{ margin: '9px 0 0', fontSize: 13, lineHeight: 1.85, color: c.weak }}>
+                  {j.current_position}
+                </p>
+                <div style={{ marginTop: 9, fontSize: 11, lineHeight: 1.7, color: c.weaker }}>
+                  ここは担当のSupportが書きます。現在地は、自分では見えにくいものだからです。
+                </div>
+              </Card>
+            </>
+          )}
+        </>
+      )}
+
+      <Spacer />
+      <div style={{ display: 'grid', gap: 9 }}>
+        {ds === null ? <P>読み込んでいます…</P> : ds.length === 0 ? (
+          <Card tone="flat"><div style={{ ...t.small, color: c.weak }}>
+            部門がまだありません。
+          </div></Card>
+        ) : ds.map((d) => (
+          <button key={d.axis.id} onClick={() => openDept(d.axis)}
+            style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
+                     padding: '15px 17px', borderRadius: r.card, background: c.card,
+                     border: `1px solid ${c.cardLine}` }}>
+            <div style={{ display: 'flex', alignItems: 'baseline',
+                          justifyContent: 'space-between', gap: 10 }}>
+              <b style={{ fontSize: 14.5, fontWeight: 640 }}>{d.axis.label}</b>
+              <span style={{ fontSize: 11, color: c.label }}>{d.rows} 行</span>
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ ...t.kicker, color: c.label, flex: '0 0 auto' }}>
+                {p.defs ? '工程' : d.all100 ? 'ひととおり届いています'
+                 : d.all0 ? 'まだ始まっていません' : '次に見るところ'}
+              </span>
+              <span style={{ flex: 1, fontSize: 12.5, color: c.weak }}>
+                {p.defs || d.all100 || d.all0 ? '' : d.next}
+              </span>
+              <span style={{ color: c.label, fontSize: 15 }}>›</span>
+            </div>
+          </button>
+        ))}
       </div>
 
       <Spacer />
       <Card tone="flat">
-        <div style={{ ...t.small, color: c.weak }}>
+        <div style={{ ...t.small, color: c.weak, lineHeight: 1.9 }}>
           {p.defs
             ? <>ここは行の定義だけです。<b style={{ fontWeight: 660, color: c.text }}>誰の値も出ません。</b> 個人の Capability Map は運営者には見えません。</>
-            : <>これは点数ではありません。<b style={{ fontWeight: 660, color: c.text }}>根拠の接続度</b>です。</>}
-          {!p.defs && <>
-          記録を共有すると繋がりが1本増え、状態が動きます。
-          数値が動くのは Checkpoint に到達したときだけです。スタッフ間では共有されません。
-          </>}
+            : <>これは点数ではありません。<b style={{ fontWeight: 660, color: c.text }}>根拠の接続度</b>です。
+               段の意味はどの部門でも同じで、中身だけが部門ごとに違います。
+               数値が動くのは Checkpoint に到達したときだけです。スタッフ間では共有されません。</>}
         </div>
       </Card>
       <Spacer />
-
-      {/* 名称を変えられるのは Management と、自分が足した行の本人だけ */}
-      {edit && (
-        <EditParamSheet param={edit}
-          canRename={!!p.isMgmt || (!!me && edit.owner_user_id === me)}
-          onClose={() => setEdit(null)}
-          onSaved={() => {
-            setEdit(null); setEditMode(false);
-            const a = ax.find((x) => x.code === tab);
-            if (a) params(a.id, p.staffId).then(setPs);
-          }} />
-      )}
-
-      {add && (
-        <AddParamSheet axisId={ax.find((x) => x.code === tab)?.id ?? ''}
-          axisName={tab === 'area' ? '能力領域' : '判断工程'} storeCommon={!!p.defs}
-          onClose={() => setAdd(false)}
-          onAdded={() => {
-            setAdd(false);
-            const a = ax.find((x) => x.code === tab);
-            if (a) params(a.id, p.staffId).then(setPs);
-          }} />
-      )}
     </Screen>
   );
 }
+
+// 1行。バッジは value から決めない（状態は capability_sources から来る）
+const MapRow = (q: {
+  param: Param; v?: Val; defs?: boolean; sub?: boolean; onOpen: () => void;
+}) => {
+  const st = q.v?.status ?? '未接続';
+  const [fg, bg, ln] =
+    st === '接続済み' ? [c.tealText, c.tealBg, c.tealLine]
+    : st === '検証中' ? [c.weaker, c.flat, c.line]
+    : [c.warmText, c.warmBg, c.warmLine];
+  const unverified = !!q.v?.unverified;
+
+  return (
+    <button onClick={q.onOpen}
+      style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
+               background: 'transparent', border: 0, padding: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline',
+                    justifyContent: 'space-between', gap: 10 }}>
+        <b style={{ fontSize: q.sub ? 12.5 : 14.5, fontWeight: q.sub ? 600 : 640 }}>
+          {q.param.name}
+        </b>
+        {!q.defs && (
+          <span style={{ padding: '4px 9px', borderRadius: r.pill, fontSize: 10.5,
+                         fontWeight: 700, color: fg, background: bg, flex: '0 0 auto',
+                         border: unverified ? `1px dashed ${c.dash}` : `1px solid ${ln}` }}>
+            {unverified ? '未検証' : st}
+          </span>
+        )}
+      </div>
+
+      {!q.defs && (
+        <div style={{ position: 'relative', height: q.sub ? 4 : 6, marginTop: q.sub ? 6 : 9,
+                      borderRadius: r.pill, background: c.line }}>
+          <div style={{ position: 'absolute', inset: 0, width: `${q.v?.value ?? 0}%`,
+                        borderRadius: r.pill,
+                        background: st === '未接続' ? c.warmBar : c.teal }} />
+        </div>
+      )}
+
+      {!q.sub && (q.param.sources ?? []).length > 0 && (
+        <div style={{ marginTop: 9, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {(q.param.sources ?? []).slice(0, 3).map((sn) => <Chip key={sn}>{SOURCE_LABEL[sn] ?? sn}</Chip>)}
+          {(q.param.sources ?? []).length > 3 && <Chip>他 {(q.param.sources ?? []).length - 3}件</Chip>}
+        </div>
+      )}
+    </button>
+  );
+};
+
+// 行のシート。段の定義と履歴。画面遷移しない
+function RowSheet(q: {
+  param: Param; v?: Val; deptLabel: string; staffId?: string; onClose: () => void;
+}) {
+  const [lv, setLv] = useState<Level[]>([]);
+  const [hist, setHist] = useState<Awaited<ReturnType<typeof historyOf>>>([]);
+  const now = q.v?.value ?? 0;
+  const next = STEPS.find((x) => x > now) ?? null;
+
+  useEffect(() => {
+    levelsOf(q.param.id).then(setLv);
+    (async () => {
+      const { data: u } = await import('../lib/api').then((m) => m.sb.auth.getUser());
+      const id = q.staffId ?? u.user?.id;
+      if (id) setHist(await historyOf(id, q.param.id));
+    })();
+  }, [q.param.id]);
+
+  const body = (step: number) => lv.find((x) => x.step === step)?.body ?? null;
+
+  return (
+    <Sheet onClose={q.onClose}>
+      <div style={{ ...t.kicker, color: c.label }}>{q.deptLabel}</div>
+      <h2 style={{ ...t.h2, margin: '6px 0 0' }}>{q.param.name}</h2>
+
+      <Spacer h={16} />
+      <Card tone={now > 0 ? 'teal' : 'flat'}>
+        <Kicker tone={now > 0 ? 'teal' : undefined}>いまの段</Kicker>
+        <div style={{ marginTop: 9, fontSize: 13.5, fontWeight: 640,
+                      color: now > 0 ? c.tealDeep : c.weak }}>
+          {now > 0 ? `${now}　${stepMeaning(now)}` : 'まだ始まっていません'}
+        </div>
+        {now > 0 && (
+          <p style={{ margin: '9px 0 0', ...t.small,
+                      color: body(now) ? c.tealDeep : c.weaker }}>
+            {body(now) ?? 'この段が、この工程で何を指すかは、まだ書かれていません。'}
+          </p>
+        )}
+      </Card>
+
+      {next && (
+        <>
+          <Spacer h={11} />
+          <Card tone="flat">
+            <Kicker>次の段</Kicker>
+            <div style={{ marginTop: 9, fontSize: 13.5, fontWeight: 640 }}>
+              {next}　{stepMeaning(next)}
+            </div>
+            <p style={{ margin: '9px 0 0', ...t.small,
+                        color: body(next) ? c.weak : c.weaker }}>
+              {body(next)
+                ?? 'まだ書かれていません。ここに上げると判断した人が書きます。'}
+            </p>
+          </Card>
+        </>
+      )}
+      {!next && now === 100 && (
+        <>
+          <Spacer h={11} />
+          <Card tone="flat"><div style={{ ...t.small, color: c.weak }}>
+            いちばん上の段です。
+          </div></Card>
+        </>
+      )}
+
+      <Spacer h={16} />
+      <Kicker>これまで</Kicker>
+      <div style={{ marginTop: 11, display: 'grid', gap: 11 }}>
+        {hist.length === 0 ? (
+          <div style={{ ...t.small, color: c.weaker }}>まだ動いていません。</div>
+        ) : hist.map((h) => (
+          <div key={h.id} style={{ display: 'grid', gap: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10,
+                          fontSize: 12.5 }}>
+              <span>{SOURCE_TEXT[h.source] ?? h.source}</span>
+              <span style={{ color: c.weaker }}>{h.created_at.slice(5, 10)} · {h.value}</span>
+            </div>
+            {h.basis && (
+              <div style={{ fontSize: 11.5, lineHeight: 1.7, color: c.weaker }}>{h.basis}</div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <Spacer h={18} />
+      <Button variant="ghost" onClick={q.onClose}>閉じる</Button>
+    </Sheet>
+  );
+}
+
+const SOURCE_TEXT: Record<string, string> = {
+  initial_estimate: '導入時の初期値',
+  cp_reached:       'Checkpoint に到達',
+  support_review:   'Support の確認',
+  support_adjust:   'Support が調整',
+  mgmt_adjust:      '運営者が調整',
+  computed:         '自動',
+};
 
 // 行を足すシート。名称とソースが揃うまで追加ボタンは無効
 function AddParamSheet(q: {
@@ -1444,94 +1524,3 @@ const selectStyle: React.CSSProperties = {
   border: `1px solid ${c.line}`, background: c.input, font: 'inherit',
   fontSize: 13.5, color: c.text, outline: 'none', boxSizing: 'border-box',
 };
-
-// 行の名称とソースを変える（Management 7）
-function EditParamSheet(q: {
-  param: Param; canRename: boolean; onClose: () => void; onSaved: () => void;
-}) {
-  const [name, setName] = useState(q.param.name);
-  const [srcs, setSrcs] = useState<string[]>(q.param.sources ?? []);
-  const [reason, setReason] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  const own = q.canRename;                       // 自分が足した行
-  const changed = name !== q.param.name
-               || srcs.join() !== (q.param.sources ?? []).join();
-  const ok = changed && srcs.length > 0
-          && (own || reason.trim().length >= 30);
-
-  return (
-    <Sheet onClose={q.onClose}>
-      <h2 style={{ ...t.h2, margin: 0 }}>この行を変えます。</h2>
-
-      {own ? (
-        <input value={name} onChange={(e) => setName(e.target.value)}
-          style={{ width: '100%', marginTop: 18, minHeight: 48, padding: '0 15px',
-                   borderRadius: r.input, border: `1.5px solid ${c.teal}`, background: c.input,
-                   font: 'inherit', fontSize: 15, color: c.text, outline: 'none',
-                   boxSizing: 'border-box' }} />
-      ) : (
-        <>
-          <div style={{ marginTop: 18, padding: '13px 15px', borderRadius: r.input,
-                        background: c.flat, fontSize: 14, fontWeight: 640 }}>
-            {q.param.name}
-          </div>
-          <Card tone="flat" style={{ marginTop: 11 }}>
-            <div style={{ ...t.small, color: c.weak, lineHeight: 1.85 }}>
-              <b style={{ fontWeight: 660, color: c.text }}>名称は Management が決めます。</b>
-              {' '}変えたいときは、Managementへ通達から伝えてください。
-            </div>
-          </Card>
-        </>
-      )}
-
-      <div style={{ marginTop: 18 }}>
-        <Kicker>どこから見るか</Kicker>
-        <div style={{ marginTop: 10, display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-          {Object.entries(SOURCE_LABEL).map(([k, label]) => {
-            const on = srcs.includes(k);
-            return (
-              <button key={k}
-                onClick={() => setSrcs((v) => on ? v.filter((x) => x !== k) : [...v, k])}
-                style={{ padding: '9px 13px', borderRadius: r.pill, cursor: 'pointer',
-                         font: 'inherit', fontSize: 11.5, fontWeight: 700,
-                         color: on ? c.tealText : c.weak,
-                         background: on ? c.tealBg : 'transparent',
-                         border: `1px solid ${on ? c.teal : c.line}` }}>
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {!own && (
-        <>
-          <Spacer h={16} />
-          <label style={{ display: 'grid', gap: 7 }}>
-            <span style={t.field}>変える理由（30字以上）</span>
-            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3}
-              style={{ ...area, minHeight: 62 }} />
-          </label>
-          <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.7, color: c.weaker }}>
-            本人の受信ボックスに、変更前後と理由が届きます。
-            {reason.trim().length < 30 && ` あと${30 - reason.trim().length}字。`}
-          </div>
-        </>
-      )}
-
-      <div style={{ marginTop: 18, display: 'grid', gap: 8 }}>
-        <Button disabled={!ok || busy} onClick={async () => {
-          setBusy(true);
-          const done = await changeParam({
-            param_id: q.param.id,
-            name: own ? name : undefined, sources: srcs,
-            reason: own ? undefined : reason, own,
-          });
-          setBusy(false); if (done) q.onSaved();
-        }}>変える</Button>
-        <Button variant="ghost" onClick={q.onClose}>やめる</Button>
-      </div>
-    </Sheet>
-  );
-}
