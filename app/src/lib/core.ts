@@ -664,3 +664,14 @@ export async function changeParam(a: {
       .eq('param_id', a.param_id).is('reason', null);
   return true;
 }
+
+// ---- 未読があること（AX-2）------------------------------------------
+// プッシュが届かない人への担保。件数は出さない —
+// 全体通達の既読を人数だけにしている扱いと揃える。
+export async function hasUnread(): Promise<boolean> {
+  const { count } = await sb.from('inbox_items')
+    .select('id', { count: 'exact', head: true })
+    .is('read_at', null).is('deleted_at', null)
+    .or(`deliver_after.is.null,deliver_after.lte.${new Date().toISOString()}`);
+  return (count ?? 0) > 0;
+}
