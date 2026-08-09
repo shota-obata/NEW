@@ -201,9 +201,22 @@ export type Val = {
 export const axes = async () =>
   ((await sb.from('capability_axes').select('*')).data ?? []) as Axis[];
 
-export const params = async (axis_id: string) =>
-  ((await sb.from('capability_params').select('*').eq('axis_id', axis_id)
-      .is('hidden_at', null).order('sort_order')).data ?? []) as Param[];
+// 店舗共通の行（owner_user_id is null）＋ その人の個人行。
+//
+// RLS は「自分の行」と「担当スタッフの行」の両方を返すので、
+// 他人の Map を開いたときに自分の個人行が混ざる。誰の Map を見ているかで絞る。
+export const params = async (axis_id: string, staffId?: string) => {
+  let q = sb.from('capability_params').select('*')
+    .eq('axis_id', axis_id).is('hidden_at', null);
+
+  if (staffId) {
+    q = q.or(`owner_user_id.is.null,owner_user_id.eq.${staffId}`);
+  } else {
+    const { data: u } = await sb.auth.getUser();
+    if (u.user) q = q.or(`owner_user_id.is.null,owner_user_id.eq.${u.user.id}`);
+  }
+  return ((await q.order('sort_order')).data ?? []) as Param[];
+};
 
 // バッジは value から決めない（第2便 L）。
 // 「接続済み／検証中／未接続」は証拠に繋がっているかどうかの状態で、

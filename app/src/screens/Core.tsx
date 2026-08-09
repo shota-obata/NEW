@@ -517,8 +517,9 @@ export function CapMap(p: {
       .then(({ data }) => setMe(data.user?.id ?? null));
   }, [p.staffId]);
   useEffect(() => {
-    const a = ax.find((x) => x.code === tab); if (a) params(a.id).then(setPs);
-  }, [ax, tab]);
+    const a = ax.find((x) => x.code === tab);
+    if (a) params(a.id, p.staffId).then(setPs);
+  }, [ax, tab, p.staffId]);
 
   const valOf = (id: string) => vs.find((v) => v.param_id === id);
 
@@ -692,7 +693,8 @@ export function CapMap(p: {
           onClose={() => setEdit(null)}
           onSaved={() => {
             setEdit(null); setEditMode(false);
-            const a = ax.find((x) => x.code === tab); if (a) params(a.id).then(setPs);
+            const a = ax.find((x) => x.code === tab);
+            if (a) params(a.id, p.staffId).then(setPs);
           }} />
       )}
 
@@ -702,7 +704,8 @@ export function CapMap(p: {
           onClose={() => setAdd(false)}
           onAdded={() => {
             setAdd(false);
-            const a = ax.find((x) => x.code === tab); if (a) params(a.id).then(setPs);
+            const a = ax.find((x) => x.code === tab);
+            if (a) params(a.id, p.staffId).then(setPs);
           }} />
       )}
     </Screen>

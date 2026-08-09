@@ -122,7 +122,11 @@ export function App() {
     return (
     <RoleSwitch current={role} name={name} personCode={code}
       onPersonal={() => setSub('personal')}
-      onPick={(r) => { setRole(r); setNav('home'); }}
+      onPick={(r) => {
+        // 役割を切り替えたら、前の役割で開いていたものは全部落とす。
+        // 残すと、Support で開いた記録の id が Staff 側に持ち越される
+        setRole(r); setNav('home'); setSub(null); setRecId(null); setCpCtx(null);
+      }}
       onSignOut={async () => { await signOut(); setGate('login'); }} />
     );
   }
