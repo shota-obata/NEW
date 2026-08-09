@@ -195,7 +195,62 @@ export type Param = {
   id: string; name: string; sources: string[]; parent_id: string | null;
   axis_id: string; owner_user_id: string | null;
 };
-export type Axis = { id: string; code: 'area' | 'step'; label: string };
+// 部門。0029 で「軸」から読み替えた（shampoo / treatment / blow /
+// color / straight / cut / common）。行は現場が足せるので、
+// code を決め打ちにしない
+export type Axis = { id: string; code: string; label: string };
+
+// 段の意味は全部門で共通。これが部門をまたいだ比較を成り立たせている
+export const STEPS = [25, 50, 75, 100] as const;
+export const stepMeaning = (n: number) =>
+  n === 25 ? '手順として再現できる'
+  : n === 50 ? '状況が変わっても、自分で判断できる'
+  : n === 75 ? 'その判断の理由を、言葉にできる'
+  : n === 100 ? '他人の判断を見て、どこがずれたか指摘できる'
+  : 'まだ始まっていません';
+
+// 部門ごとの要約。合計点も平均も出さない（出すと点数表になる）。
+// 代わりに「いちばん段が低い行」の名前を1つ出す
+export type Dept = {
+  axis: Axis; rows: number; next: string | null; all100: boolean; all0: boolean;
+};
+
+export async function departments(staffId?: string): Promise<Dept[]> {
+  const ax = await axes();
+  const vs = await values(staffId);
+  const out: Dept[] = [];
+
+  for (const a of ax) {
+    const ps = (await params(a.id, staffId)).filter((x) => !x.parent_id);
+    if (ps.length === 0) continue;
+    const valOf = (id: string) => vs.find((v) => v.param_id === id)?.value ?? 0;
+    const sorted = [...ps].sort((x, y) => valOf(x.id) - valOf(y.id));
+    out.push({
+      axis: a, rows: ps.length,
+      next: sorted[0]?.name ?? null,
+      all100: ps.every((x) => valOf(x.id) === 100),
+      all0:   ps.every((x) => valOf(x.id) === 0),
+    });
+  }
+  return out;
+}
+
+// 行ごとの段の定義。空のまま始まる
+export type Level = { id: string; param_id: string; step: number; body: string;
+                      written_by: string | null; written_at: string };
+
+export const levelsOf = async (param_id: string) =>
+  ((await sb.from('capability_levels').select('*')
+      .eq('param_id', param_id).order('step')).data ?? []) as Level[];
+
+// その行の履歴。追記のみなので全部残っている
+export const historyOf = async (staff_id: string, param_id: string) =>
+  ((await sb.from('capability_values').select('*')
+      .eq('staff_id', staff_id).eq('param_id', param_id).is('snapshot_month', null)
+      .order('created_at', { ascending: false })).data ?? []) as {
+    id: string; value: number; source: string; basis: string | null;
+    entered_by: string | null; created_at: string;
+  }[];
 export type Val = {
   staff_id: string; param_id: string; value: number;
   status: '接続済み' | '検証中' | '未接続';
