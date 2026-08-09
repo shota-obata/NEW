@@ -60,6 +60,7 @@ export function App() {
   const [cpCtx, setCpCtx] = useState<
     { journeyId: string; nextCode: string; existing: string[]; cpId?: string } | null>(null);
   const [targets, setTargets] = useState<{ id: string; display_name: string }[]>([]);
+  const [subView, setSubView] = useState<string | null>(null);
   const [gateOk, setGateOk] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -88,7 +89,7 @@ export function App() {
     setRole(chosenRole()); setNav('home'); setSub(null);
     setGate(next === 'ok' ? 'ok' : (next as Gate));
   };
-  const go = (k: string) => { setSub(null); setRecId(null); setNav(k); };
+  const go = (k: string) => { setSub(null); setSubView(null); setRecId(null); setNav(k); };
   const home = () => go('home');
 
   // ---- 認証と同意（ナビは出さない。飛ばせる導線を作らない）----
@@ -209,15 +210,19 @@ export function App() {
     );
     if (nav === 'staff') {
       // 一覧 → 詳細。担当が1名でも一覧を飛ばさない
+      if (sub && subView === 'map') return (
+        <CapMap staffId={sub} nav={bar} onBack={() => setSubView(null)} />
+      );
       if (sub) return (
         <StaffDetail staffId={sub} nav={bar}
-          onBack={() => setSub(null)}
+          onBack={() => { setSub(null); setSubView(null); }}
           onOpenRecord={(id) => setRecId(id)}
           onNotice={() => go('notice')}
           onNewCp={async () => { const x = await cpContext(sub); if (x) { setCpCtx(x); setNav('newcp'); } }}
           onNextQuestion={async (cpId) => {
             const x = await cpContext(sub); if (x) { setCpCtx({ ...x, cpId }); setNav('nextq'); }
-          }} />
+          }}
+          onCapMap={() => setSubView('map')} />
       );
       return <StaffList nav={bar} onOpen={(id) => setSub(id)} />;
     }

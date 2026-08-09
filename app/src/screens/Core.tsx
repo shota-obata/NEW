@@ -8,14 +8,14 @@ import { useEffect, useState } from 'react';
 import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer , type NavSlots } from '../ui/kit';
 import { c, t, r } from '../ui/tokens';
 import {
-  consults, ask, replyTo, myJourney, supportDecide, hold, axes, params, values, markRead,
+  myJourney, supportDecide, hold, axes, params, values, markRead,
   softDelete, restore, postNotice,
   inboxRows, canReply, askAbout, storeSettings, currentCP, cpConditions, holdCards,
   shareTargets, shareWith, setVision, createCheckpoint, condLabel, FIELD_LABEL,
   nextQuestions, deliverQuestion, submitForReview, snoozeNudge,
   addParam, sourcePreview, SOURCE_LABEL, changeParam,
   type ShareTargets, type CondDraft, type CondKind, type NextQDraft,
-  type Consult, type Journey, type CP, type Axis, type Param, type Val,
+  type Journey, type CP, type Axis, type Param, type Val,
   type InboxRow, type StoreSettings, type CondRow,
 } from '../lib/core';
 import { agreeAssignment, declineAssignment } from '../lib/mgmt';
@@ -25,108 +25,6 @@ const day = (s: string) => s.slice(5, 10).replace('-', '/');
 // ============================================================
 // 相談と返答（区分02）
 // ============================================================
-
-export function Consults(p: { canReply: boolean; onBack: () => void ; nav?: NavSlots}) {
-  const [list, setList] = useState<Consult[] | null>(null);
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  const load = () => consults().then(setList);
-  useEffect(() => { load(); }, []);
-
-  return (
-    <Screen {...p.nav} bar={<Bar title="相談" right={p.canReply ? '担当分' : 'plain'} />}
-      footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
-
-      {!p.canReply && (
-        <>
-          <H>答えではなく、問いが返ります。</H>
-          <P>
-            うまくいかないことを書いてください。手順ではなく、
-            <b style={{ fontWeight: 660, color: c.text }}>確かめ方が返ってきます。</b>
-          </P>
-          <Spacer />
-          <div style={{ display: 'grid', gap: 12 }}>
-            <input value={title} onChange={(e) => setTitle(e.target.value)}
-              placeholder="カットの基準点が決まらない"
-              style={{ width: '100%', minHeight: 50, padding: '0 15px', borderRadius: r.input,
-                       border: `1.5px solid ${c.teal}`, background: c.input, font: 'inherit',
-                       fontSize: 16, fontWeight: 620, outline: 'none' }} />
-            <textarea value={body} onChange={(e) => setBody(e.target.value)}
-              placeholder="指名が続く先輩と自分の差が、どこにあるのか分かりません。"
-              style={{ width: '100%', minHeight: 90, padding: '13px 15px', borderRadius: r.input,
-                       border: `1px solid ${c.line}`, background: c.input, font: 'inherit',
-                       fontSize: 13, lineHeight: 1.8, resize: 'vertical', outline: 'none' }} />
-            <Button disabled={!title.trim() || !body.trim() || busy} onClick={async () => {
-              setBusy(true); await ask({ title: title.trim(), body: body.trim() });
-              setBusy(false); setTitle(''); setBody(''); load();
-            }}>担当のSupportに相談する</Button>
-          </div>
-          <Spacer />
-        </>
-      )}
-
-      <Kicker>{p.canReply ? '担当分の相談' : 'これまでの相談'}</Kicker>
-      <div style={{ marginTop: 12, display: 'grid', gap: 9 }}>
-        {list === null ? <P>読み込んでいます…</P> : list.length === 0 ? (
-          <Card tone="flat"><div style={{ ...t.small, color: c.weaker }}>
-            まだありません。{p.canReply && '担当していないスタッフの相談は、ここにも出ません。'}
-          </div></Card>
-        ) : list.map((x) => (
-          <Card key={x.id}>
-            <div style={{ display: 'flex', alignItems: 'baseline',
-                          justifyContent: 'space-between', gap: 10 }}>
-              <b style={{ fontSize: 14, fontWeight: 660 }}>{x.title}</b>
-              <span style={{ fontSize: 11, color: c.label }}>{day(x.created_at)}</span>
-            </div>
-            <p style={{ margin: '9px 0 0', ...t.small, color: c.weak }}>{x.body}</p>
-
-            {x.reply_body ? (
-              <div style={{ marginTop: 12, padding: '13px 15px', borderRadius: r.input,
-                            background: c.tealBg, border: `1px solid ${c.tealLine}` }}>
-                <div style={{ ...t.field, color: c.tealText }}>返答</div>
-                <p style={{ margin: '7px 0 0', fontSize: 13, lineHeight: 1.8, color: c.tealDeep }}>
-                  {x.reply_body}
-                </p>
-              </div>
-            ) : p.canReply ? (
-              openId === x.id ? (
-                <div style={{ marginTop: 12, display: 'grid', gap: 9 }}>
-                  <textarea value={draft} onChange={(e) => setDraft(e.target.value)}
-                    placeholder="どこで違和感に気づいた？　その時どう判断した？"
-                    style={{ width: '100%', minHeight: 80, padding: '13px 15px',
-                             borderRadius: r.input, border: `1.5px solid ${c.teal}`,
-                             background: c.input, font: 'inherit', fontSize: 13,
-                             lineHeight: 1.8, resize: 'vertical', outline: 'none' }} />
-                  <Warn>
-                    答えではなく<b style={{ fontWeight: 700 }}>問いを1つ返します</b>。
-                    手順を渡すと、判断の機会が消えます。
-                  </Warn>
-                  <Button disabled={!draft.trim() || busy} onClick={async () => {
-                    setBusy(true); await replyTo(x.id, draft.trim());
-                    setBusy(false); setDraft(''); setOpenId(null); load();
-                  }}>返答する</Button>
-                </div>
-              ) : (
-                <div style={{ marginTop: 12 }}>
-                  <Button variant="outline" onClick={() => { setOpenId(x.id); setDraft(''); }}>
-                    返答する
-                  </Button>
-                </div>
-              )
-            ) : (
-              <div style={{ marginTop: 10, fontSize: 11.5, color: c.weaker }}>返答待ちです。</div>
-            )}
-          </Card>
-        ))}
-      </div>
-      <Spacer />
-    </Screen>
-  );
-}
 
 // ============================================================
 // Journey と Checkpoint（2段の到達判断）
@@ -673,7 +571,8 @@ export function CapMap(p: {
           style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
                    font: 'inherit', fontSize: 12.5,
                    color: editMode ? c.tealText : c.weak }}>
-          {editMode ? '行を選ぶのをやめる' : '行の名称とソースを変える'}
+          {editMode ? '行を選ぶのをやめる'
+            : p.staffId ? '行のソースを変える' : '行の名称とソースを変える'}
         </button>
       </div>
 

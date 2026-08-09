@@ -12,7 +12,7 @@ import { assignedStaff, sharedRecords, markViewed, myViewed, attention, needsAct
 import { lastQueryError, clearQueryError } from '../lib/api';
 import { storeSettings, myJourney, setCurrentPosition, checkpoints,
          type StoreSettings, type Journey, type CP } from '../lib/core';
-import { consultations, type Consultation } from '../lib/support';
+import { consultations, reply, type Consultation } from '../lib/support';
 import { listImages, imageUrl, viewers, type Record_, type Img } from '../lib/staff';
 import { replyToRecord } from '../lib/core';
 
@@ -433,6 +433,7 @@ export function StaffList(p: {
 export function StaffDetail(p: {
   staffId: string; onBack: () => void; onOpenRecord: (id: string) => void;
   onNotice: () => void; onNewCp: () => void; onNextQuestion: (cpId: string) => void;
+  onCapMap: () => void;
   nav?: NavSlots;
 }) {
   const [att, setAtt] = useState<Attention | null | undefined>(undefined);
@@ -442,6 +443,9 @@ export function StaffDetail(p: {
   const [pos, setPos] = useState('');
   const [cps, setCps] = useState<(CP & { reached_at: string | null })[]>([]);
 
+  const load = () => consultations().then((xs) =>
+    setCons(xs.filter((v) => v.staff_id === p.staffId)));
+
   useEffect(() => {
     myJourney(p.staffId).then(async (x) => {
       setJ(x); setPos(x?.current_position ?? '');
@@ -449,7 +453,7 @@ export function StaffDetail(p: {
     });
     attention().then((xs) => setAtt(xs.find((x) => x.staff.id === p.staffId) ?? null));
     sharedRecords().then((xs) => setRecs(xs.filter((x) => x.staff_id === p.staffId)));
-    consultations().then((xs) => setCons(xs.filter((x) => x.staff_id === p.staffId)));
+    load();
   }, [p.staffId]);
 
   // 優先順。当てはまった最初の1つだけを出す。
@@ -524,16 +528,7 @@ export function StaffDetail(p: {
             まだ相談はありません。
           </div></Card>
         ) : cons.slice(0, 3).map((x) => (
-          <Card key={x.id} tone={x.replied_at ? 'plain' : 'teal'}>
-            <div style={{ display: 'flex', alignItems: 'baseline',
-                          justifyContent: 'space-between', gap: 10 }}>
-              <b style={{ fontSize: 13.5, fontWeight: 660 }}>{x.title}</b>
-              <span style={{ fontSize: 11, color: c.label }}>
-                {x.replied_at ? '返答済み' : '未返答'}
-              </span>
-            </div>
-            <p style={{ margin: '9px 0 0', ...t.small, color: c.weak }}>{x.body}</p>
-          </Card>
+          <ConsultCard key={x.id} c={x} onDone={load} />
         ))}
       </div>
 
@@ -591,10 +586,66 @@ export function StaffDetail(p: {
         <Button variant="outline" onClick={p.onNewCp}>Checkpoint を置く</Button>
       </div>
 
+      {/* Capability Map。読むのと、ソースを変えるのが Support の役目。
+          名称は Management が決める（Management 7）*/}
+      <Spacer />
+      <Button variant="outline" onClick={p.onCapMap}>Capability Map を見る</Button>
+
       {/* 設計に返す */}
       <Spacer />
       <Button variant="outline" onClick={p.onNotice}>Managementへ通達する</Button>
       <Spacer />
     </Screen>
+  );
+}
+
+// 相談に返す。答えではなく、次の問いを返す場所。
+// 返答までの日数は平均レスポンスに数える（起点は相談が書かれた時刻）
+function ConsultCard(q: { c: Consultation; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
+  const done = !!q.c.replied_at;
+
+  return (
+    <Card tone={done ? 'plain' : 'teal'}>
+      <div style={{ display: 'flex', alignItems: 'baseline',
+                    justifyContent: 'space-between', gap: 10 }}>
+        <b style={{ fontSize: 13.5, fontWeight: 660 }}>{q.c.title}</b>
+        <span style={{ fontSize: 11, color: done ? c.label : c.tealText }}>
+          {done ? '返答済み' : '未返答'}
+        </span>
+      </div>
+      <p style={{ margin: '9px 0 0', ...t.small, color: c.weak }}>{q.c.body}</p>
+
+      {done ? (
+        <p style={{ margin: '11px 0 0', padding: '11px 13px', borderRadius: r.input,
+                    background: c.flat, ...t.small, color: c.weak }}>
+          {q.c.reply_body}
+        </p>
+      ) : open ? (
+        <div style={{ marginTop: 11 }}>
+          <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4}
+            placeholder="答えではなく、次の問いを返してください。"
+            style={{ width: '100%', padding: '12px 14px', borderRadius: r.input,
+                     border: `1px solid ${c.line}`, background: c.input, font: 'inherit',
+                     fontSize: 13, lineHeight: 1.8, color: c.text, outline: 'none',
+                     resize: 'vertical', boxSizing: 'border-box' }} />
+          <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+            <Button disabled={busy || !body.trim()} onClick={async () => {
+              setBusy(true);
+              const ok = await reply(q.c.id, body.trim());
+              setBusy(false);
+              if (ok) { setOpen(false); q.onDone(); }
+            }}>返す</Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>やめる</Button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ marginTop: 11 }}>
+          <Button variant="outline" onClick={() => setOpen(true)}>返す</Button>
+        </div>
+      )}
+    </Card>
   );
 }
