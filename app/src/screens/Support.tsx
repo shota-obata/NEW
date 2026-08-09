@@ -422,9 +422,9 @@ export function StaffDetail(p: {
   onNotice: () => void; onNewCp: () => void; onNextQuestion: (cpId: string) => void;
   nav?: NavSlots;
 }) {
-  const [att, setAtt] = useState<Attention | null>(null);
-  const [recs, setRecs] = useState<(Record_ & { staff_id: string })[]>([]);
-  const [cons, setCons] = useState<Consultation[]>([]);
+  const [att, setAtt] = useState<Attention | null | undefined>(undefined);
+  const [recs, setRecs] = useState<(Record_ & { staff_id: string })[] | null>(null);
+  const [cons, setCons] = useState<Consultation[] | null>(null);
   const [j, setJ] = useState<Journey | null>(null);
   const [pos, setPos] = useState('');
   const [cps, setCps] = useState<(CP & { reached_at: string | null })[]>([]);
@@ -439,13 +439,17 @@ export function StaffDetail(p: {
     consultations().then((xs) => setCons(xs.filter((x) => x.staff_id === p.staffId)));
   }, [p.staffId]);
 
-  // 優先順。当てはまった最初の1つだけを出す
+  // 優先順。当てはまった最初の1つだけを出す。
+  //
+  // 3つとも届くまでは判定しない — 途中で数えると、
+  // 記録が来る前に「30日、記録が来ていません。」が出てから消える
+  const ready = recs !== null && cons !== null && att !== undefined;
   const thirty = Date.now() - 30 * 86400000;
-  const recent = recs.filter((x) => x.shared_at && Date.parse(x.shared_at) > thirty);
-  const unreplied = cons.filter((x) => !x.replied_at);
+  const recent = (recs ?? []).filter((x) => x.shared_at && Date.parse(x.shared_at) > thirty);
+  const unreplied = (cons ?? []).filter((x) => !x.replied_at);
 
-  const view =
-    recent.length === 0 && recs.length >= 0 && att
+  const view = !ready ? null
+    : recent.length === 0
       ? { head: '30日、記録が来ていません。',
           body: '書けない理由の方が先にあります。声をかけるより、何が起きているかを聞いてください。' }
     : unreplied.length >= 3
@@ -461,7 +465,7 @@ export function StaffDetail(p: {
       right={att?.staff.person_code} />}
       footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
 
-      <H>{view ? view.head : 'いま、急ぐものはありません。'}</H>
+      <H>{!ready ? ' ' : view ? view.head : 'いま、急ぐものはありません。'}</H>
 
       {/* 状態の指摘。指摘が無いときは箱を残さない（探させることになる）*/}
       {view && (
@@ -502,7 +506,7 @@ export function StaffDetail(p: {
       <Spacer />
       <Kicker>相談</Kicker>
       <div style={{ marginTop: 12, display: 'grid', gap: 9 }}>
-        {cons.length === 0 ? (
+        {cons === null ? <P>…</P> : cons.length === 0 ? (
           <Card tone="flat"><div style={{ ...t.small, color: c.weaker }}>
             まだ相談はありません。
           </div></Card>
@@ -524,7 +528,7 @@ export function StaffDetail(p: {
       <Spacer />
       <Kicker>共有された記録</Kicker>
       <div style={{ marginTop: 12, display: 'grid', gap: 9 }}>
-        {recs.length === 0 ? (
+        {recs === null ? <P>…</P> : recs.length === 0 ? (
           <Card tone="flat"><div style={{ ...t.small, color: c.weaker }}>
             まだありません。
           </div></Card>

@@ -62,9 +62,15 @@ export type Consultation = {
   created_at: string; replied_at: string | null; reply_body: string | null;
 };
 
+// RLS は「担当分」と「自分が書いたもの」の両方を返す。
+// Support として見る画面なので、自分が書いた相談は外す。
+// 外さないと、兼務の人の画面に自分の相談が「担当スタッフの相談」として並ぶ。
 export async function consultations(): Promise<Consultation[]> {
+  const { data: u } = await sb.auth.getUser();
+  if (!u.user) return [];
   const { data } = await sb.from('consultations')
-    .select('*').order('created_at', { ascending: false }).limit(30);
+    .select('*').neq('staff_id', u.user.id)
+    .order('created_at', { ascending: false }).limit(30);
   return (data ?? []) as Consultation[];
 }
 
