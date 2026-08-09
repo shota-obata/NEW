@@ -132,6 +132,7 @@ export function Personal(p: { onBack: () => void; nav?: NavSlots }) {
 function NoteCard(q: { note: Note; canShare: boolean; onDone: () => void }) {
   const [body, setBody] = useState(q.note.body);
   const [shown, setShown] = useState(false);
+  const [why, setWhy] = useState<string | null>(null);
 
   useEffect(() => { if (q.canShare) noteShares(q.note.id).then((n) => setShown(n > 0)); },
             [q.note.id, q.canShare]);
@@ -150,7 +151,11 @@ function NoteCard(q: { note: Note; canShare: boolean; onDone: () => void }) {
           {q.note.updated_at.slice(5, 16).replace('T', ' ')}
         </span>
         {q.canShare && !shown && (
-          <button onClick={async () => { if (await shareNote(q.note.id)) setShown(true); }}
+          <button onClick={async () => {
+            // 担当がいないと開示先が決まらない。押して黙るのを避けて理由を出す
+            if (await shareNote(q.note.id)) { setShown(true); setWhy(null); }
+            else setWhy('担当のSupportがいないので、まだ見せられません。');
+          }}
             style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
                      font: 'inherit', fontSize: 11.5, color: c.tealText }}>
             担当のSupportに見せる
@@ -167,6 +172,12 @@ function NoteCard(q: { note: Note; canShare: boolean; onDone: () => void }) {
           style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
                    font: 'inherit', fontSize: 11.5, color: c.weaker }}>消す</button>
       </div>
+
+      {why && (
+        <div style={{ marginTop: 9, fontSize: 11.5, lineHeight: 1.7, color: c.warmText }}>
+          {why}
+        </div>
+      )}
     </Card>
   );
 }

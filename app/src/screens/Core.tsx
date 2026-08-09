@@ -40,12 +40,13 @@ export function JourneyScreen(p: {
   const [conds, setConds] = useState<CondRow[]>([]);
   const [past, setPast] = useState(false);      // これまでの到達シート
   const [ask, setAsk] = useState(false);        // 声をかける（相談シート）
+  const [loaded, setLoaded] = useState(false);
 
   const sup = p.supportName ?? '担当のSupport';
 
   const load = async () => {
     const x = await myJourney(p.staffId);
-    setJ(x);
+    setJ(x); setLoaded(true);
     const { cp: cur, all: list } = await currentCP(p.staffId);
     setCp(cur); setAll(list);
     setConds(cur ? await cpConditions(cur) : []);
@@ -100,7 +101,28 @@ export function JourneyScreen(p: {
     </Screen>
   );
 
-  if (!j || !cp) return (
+  // Journey が無い＝担当がまだ決まっていない。
+  // ここを「読み込んでいます…」のままにすると、永久に回り続ける
+  if (!loaded) return (
+    <Screen {...p.nav} bar={<Bar title="CP" />}><Spacer h={30} /><P>読み込んでいます…</P></Screen>
+  );
+  if (!j) return (
+    <Screen {...p.nav} bar={<Bar title="CP" />}
+      footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
+      <H>担当が決まると、ここが動きます。</H>
+      <Spacer h={18} />
+      <Card tone="flat">
+        <div style={{ ...t.small, color: c.weak, lineHeight: 1.9 }}>
+          Checkpoint は担当のSupportと一緒に置きます。
+          担当の割り当ては運営者と双方の同意で決まるので、
+          <b style={{ fontWeight: 660, color: c.text }}>あなたの側ですることはありません。</b>
+          {' '}記録は担当が決まる前から書けます。
+        </div>
+      </Card>
+      <Spacer />
+    </Screen>
+  );
+  if (!cp) return (
     <Screen {...p.nav} bar={<Bar title="CP" />}><Spacer h={30} /><P>読み込んでいます…</P></Screen>
   );
 
@@ -394,8 +416,12 @@ const area: React.CSSProperties = {
 // Capability Map
 // ============================================================
 
+// defs = 定義だけを見る面（Management）。
+// 誰の値も出さない — Management に Capability Map の細目は見えない、を守る。
+// 変えられるのは行の名称とソースだけ。
 export function CapMap(p: {
-  staffId?: string; isMgmt?: boolean; onBack: () => void; nav?: NavSlots;
+  staffId?: string; isMgmt?: boolean; defs?: boolean;
+  onBack: () => void; nav?: NavSlots;
 }) {
   const [ax, setAx] = useState<Axis[]>([]);
   const [tab, setTab] = useState<'area' | 'step'>('area');
@@ -411,7 +437,7 @@ export function CapMap(p: {
   useEffect(() => {
     axes().then(setAx);
     values(p.staffId).then(setVs);
-    myJourney(p.staffId).then((x) => { setJ(x); setVis(x?.vision ?? ''); });
+    if (!p.defs) myJourney(p.staffId).then((x) => { setJ(x); setVis(x?.vision ?? ''); });
     import('../lib/api').then((m) => m.sb.auth.getUser())
       .then(({ data }) => setMe(data.user?.id ?? null));
   }, [p.staffId]);
@@ -451,20 +477,22 @@ export function CapMap(p: {
           <b style={{ fontSize: q.sub ? 12.5 : 14.5, fontWeight: q.sub ? 600 : 640 }}>
             {q.param.name}
           </b>
-          <span style={{ padding: '4px 9px', borderRadius: r.pill, fontSize: 10.5,
-                         fontWeight: 700, color: fg, background: bg, flex: '0 0 auto',
-                         border: unverified ? `1px dashed ${c.dash}` : `1px solid ${ln}` }}>
-            {unverified ? '未検証' : st}
-          </span>
+          {!p.defs && (
+            <span style={{ padding: '4px 9px', borderRadius: r.pill, fontSize: 10.5,
+                           fontWeight: 700, color: fg, background: bg, flex: '0 0 auto',
+                           border: unverified ? `1px dashed ${c.dash}` : `1px solid ${ln}` }}>
+              {unverified ? '未検証' : st}
+            </span>
+          )}
         </div>
 
         {/* バーは value そのまま。取る値は 0/25/50/75/100 の5段階だけ */}
-        <div style={{ position: 'relative', height: q.sub ? 4 : 6, marginTop: q.sub ? 6 : 9,
+        {!p.defs && <div style={{ position: 'relative', height: q.sub ? 4 : 6, marginTop: q.sub ? 6 : 9,
                       borderRadius: r.pill, background: c.line }}>
           <div style={{ position: 'absolute', inset: 0, width: `${v?.value ?? 0}%`,
                         borderRadius: r.pill,
                         background: st === '未接続' ? c.warmBar : c.teal }} />
-        </div>
+        </div>}
 
         {/* ソースチップは定義側の「どこから来る値か」。記録の題名は出さない（第3便 Y）*/}
         {!q.sub && chips.length > 0 && (
@@ -474,12 +502,12 @@ export function CapMap(p: {
           </div>
         )}
 
-        {!q.sub && st === '未接続' && (
+        {!p.defs && !q.sub && st === '未接続' && (
           <div style={{ marginTop: 7, fontSize: 11, lineHeight: 1.7, color: c.weaker }}>
             まだ記録が1件も繋がっていません。
           </div>
         )}
-        {!q.sub && unverified && (
+        {!p.defs && !q.sub && unverified && (
           <div style={{ marginTop: 7, fontSize: 11, lineHeight: 1.7, color: c.weaker }}>
             導入時の初期値のまま、90日動いていません{v?.basis ? `（${v.basis}）` : ''}。
           </div>
@@ -489,11 +517,13 @@ export function CapMap(p: {
   };
 
   return (
-    <Screen {...p.nav} bar={<Bar title="Capability Map" right="点数ではありません" />}
+    <Screen {...p.nav} bar={<Bar title="Capability Map"
+      right={p.defs ? '定義だけ' : '点数ではありません'} />}
       footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
 
       {/* どこへ行きたいかは本人が書く。いまどこにいるかは Support が書く。
           現在地は自分では見えにくい。逆にすると評価面談になる */}
+      {!p.defs && <>
       <Spacer h={18} />
       <label style={{ display: 'grid', gap: 7 }}>
         <span style={t.field}>どこへ向かっていますか</span>
@@ -507,7 +537,8 @@ export function CapMap(p: {
                    resize: 'vertical', boxSizing: 'border-box' }} />
       </label>
 
-      {j?.current_position && (
+      </>}
+      {!p.defs && j?.current_position && (
         <>
           <Spacer h={12} />
           <Card tone="flat">
@@ -553,7 +584,7 @@ export function CapMap(p: {
       </div>
 
       {/* 自分の Map にだけ行が増える。他人の Map を開いているときは出さない */}
-      {!p.staffId && (
+      {(!p.staffId || p.defs) && (
         <>
           <Spacer h={16} />
           <button onClick={() => setAdd(true)}
@@ -579,9 +610,13 @@ export function CapMap(p: {
       <Spacer />
       <Card tone="flat">
         <div style={{ ...t.small, color: c.weak }}>
-          これは点数ではありません。<b style={{ fontWeight: 660, color: c.text }}>根拠の接続度</b>です。
+          {p.defs
+            ? <>ここは行の定義だけです。<b style={{ fontWeight: 660, color: c.text }}>誰の値も出ません。</b> 個人の Capability Map は運営者には見えません。</>
+            : <>これは点数ではありません。<b style={{ fontWeight: 660, color: c.text }}>根拠の接続度</b>です。</>}
+          {!p.defs && <>
           記録を共有すると繋がりが1本増え、状態が動きます。
           数値が動くのは Checkpoint に到達したときだけです。スタッフ間では共有されません。
+          </>}
         </div>
       </Card>
       <Spacer />
@@ -600,7 +635,7 @@ export function CapMap(p: {
 
       {add && (
         <AddParamSheet axisId={ax.find((x) => x.code === tab)?.id ?? ''}
-          axisName={tab === 'area' ? '能力領域' : '判断工程'}
+          axisName={tab === 'area' ? '能力領域' : '判断工程'} storeCommon={!!p.defs}
           onClose={() => setAdd(false)}
           onAdded={() => {
             setAdd(false);
@@ -614,7 +649,8 @@ export function CapMap(p: {
 
 // 行を足すシート。名称とソースが揃うまで追加ボタンは無効
 function AddParamSheet(q: {
-  axisId: string; axisName: string; onClose: () => void; onAdded: () => void;
+  axisId: string; axisName: string; storeCommon?: boolean;
+  onClose: () => void; onAdded: () => void;
 }) {
   const [name, setName] = useState('');
   const [srcs, setSrcs] = useState<string[]>([]);
@@ -660,14 +696,17 @@ function AddParamSheet(q: {
       <div style={{ marginTop: 18, display: 'grid', gap: 8 }}>
         <Button disabled={!ok || busy} onClick={async () => {
           setBusy(true);
-          const done = await addParam({ axis_id: q.axisId, name, sources: srcs });
+          const done = await addParam({ axis_id: q.axisId, name, sources: srcs },
+                                      q.storeCommon);
           setBusy(false); if (done) q.onAdded();
         }}>追加する</Button>
         <Button variant="ghost" onClick={q.onClose}>やめる</Button>
       </div>
 
       <div style={{ marginTop: 14, ...t.small, color: c.weaker }}>
-        ここで足した行は、あなたの Map にだけ増えます。
+        {q.storeCommon
+          ? 'ここで足した行は、店舗の全員の Map に増えます。'
+          : 'ここで足した行は、あなたの Map にだけ増えます。'}
       </div>
     </Sheet>
   );

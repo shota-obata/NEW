@@ -160,9 +160,15 @@ export function App() {
           onPolicy={() => setSub('policy')} />
       );
     }
-    if (nav === 'design') return (
-      <Design nav={bar} onQuality={() => go('view')} onBack={home} />
-    );
+    if (nav === 'design') {
+      if (subView === 'capdefs') return (
+        <CapMap defs isMgmt nav={bar} onBack={() => setSubView(null)} />
+      );
+      return (
+        <Design nav={bar} onQuality={() => go('view')}
+          onCapDefs={() => setSubView('capdefs')} onBack={home} />
+      );
+    }
     if (nav === 'devices') return <Devices nav={bar} onBack={home} />;
     if (nav === 'notice') {
       // 全体通達と個別通達。宛先を絞れるのは個別だけ

@@ -685,11 +685,15 @@ export function sourcePreview(name: string, srcs: string[]): string {
   return `「${name.trim()}」は、${srcs.map((s) => SOURCE_LABEL[s]).join('、')}から見ます。`;
 }
 
-export async function addParam(a: { axis_id: string; name: string; sources: string[] }) {
+// storeCommon = true は Management が足す店舗共通の行（全員の Map に出る）。
+// 既定は個人の行で、足した本人の Map にだけ増える。
+export async function addParam(
+  a: { axis_id: string; name: string; sources: string[] }, storeCommon = false,
+) {
   const { data: u } = await sb.auth.getUser(); if (!u.user) return false;
   const { error } = await sb.from('capability_params').insert({
     axis_id: a.axis_id, name: a.name.trim(), sources: a.sources,
-    owner_user_id: u.user.id,        // 自分の Map にだけ増える
+    owner_user_id: storeCommon ? null : u.user.id,
     sort_order: 99,
   });
   return !error;
