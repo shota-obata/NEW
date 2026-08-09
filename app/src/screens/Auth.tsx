@@ -108,7 +108,7 @@ export function RegisterDevice(p: { onDone: () => void }) {
   if (step === 'code') {
     const ready = /^[A-Za-z]{2}-\d{2}$/.test(person) && code.length === 6;
     return (
-      <Screen bar={<Bar title="端末の登録" right="1 / 2" />}
+      <Screen bar={<Bar title="端末の登録" right="1 / 3" />}
         footer={
           <div style={{ display: 'grid', gap: 9 }}>
             <Button disabled={!ready} onClick={() => setStep('label')}>次へ</Button>
@@ -136,7 +136,7 @@ export function RegisterDevice(p: { onDone: () => void }) {
 
   const ready = label.trim().length > 0;
   return (
-    <Screen bar={<Bar title="端末の登録" right="2 / 2" />}
+    <Screen bar={<Bar title="端末の登録" right="2 / 3" />}
       footer={
         <div style={{ display: 'grid', gap: 9 }}>
           <Button disabled={!ready || busy} onClick={async () => {
