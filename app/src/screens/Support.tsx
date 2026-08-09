@@ -9,6 +9,7 @@ import { Screen, Bar, H, P, Card, Kicker, Button, Spacer, type NavSlots } from '
 import { c, t, r } from '../ui/tokens';
 import { assignedStaff, sharedRecords, markViewed, myViewed, attention, needsAction,
          type Staff, type Attention } from '../lib/support';
+import { lastQueryError, clearQueryError } from '../lib/api';
 import { storeSettings, myJourney, setCurrentPosition, checkpoints,
          type StoreSettings, type Journey, type CP } from '../lib/core';
 import { consultations, type Consultation } from '../lib/support';
@@ -27,13 +28,15 @@ export function SupportHome(p: {
 
   const [seenIds, setSeenIds] = useState<string[] | null>(null);
   const [att, setAtt] = useState<Attention[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
   const [st, setSt] = useState<StoreSettings | null>(null);
 
   useEffect(() => {
+    clearQueryError();
     assignedStaff().then(setStaff);
     sharedRecords().then(setRecs);
     myViewed().then(setSeenIds);
-    attention().then(setAtt);
+    attention().then((x) => { setAtt(x); setErr(lastQueryError()); });
     storeSettings().then(setSt);
   }, []);
 
@@ -135,9 +138,11 @@ export function SupportHome(p: {
       <Kicker>いま見るところ</Kicker>
       <div style={{ marginTop: 12 }}>
         {att === null ? <P>…</P> : att.length === 0 ? (
-          <Card tone="flat">
-            <div style={{ ...t.small, color: c.weak }}>
-              まだ担当がありません。担当の割り当ては運営者と双方の同意で決まります。
+          <Card tone={err ? 'warm' : 'flat'}>
+            <div style={{ ...t.small, color: err ? c.warmDeep : c.weak }}>
+              {err
+                ? <>読み込めませんでした。<br /><code style={{ font: t.mono }}>{err}</code></>
+                : 'まだ担当がありません。担当の割り当ては運営者と双方の同意で決まります。'}
             </div>
           </Card>
         ) : hot.length === 0 ? (
@@ -357,7 +362,11 @@ export function StaffList(p: {
   onOpen: (id: string) => void; nav?: NavSlots;
 }) {
   const [att, setAtt] = useState<Attention[] | null>(null);
-  useEffect(() => { attention().then(setAtt); }, []);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    clearQueryError();
+    attention().then((x) => { setAtt(x); setErr(lastQueryError()); });
+  }, []);
 
   return (
     <Screen {...p.nav} bar={<Bar title="スタッフ" />}>
@@ -365,9 +374,13 @@ export function StaffList(p: {
 
       <Spacer h={16} />
       {att === null ? <P>読み込んでいます…</P> : att.length === 0 ? (
-        <Card tone="flat"><div style={{ ...t.small, color: c.weak }}>
-          まだ担当がありません。担当の割り当ては運営者と双方の同意で決まります。
-        </div></Card>
+        <Card tone={err ? 'warm' : 'flat'}>
+          <div style={{ ...t.small, color: err ? c.warmDeep : c.weak }}>
+            {err
+              ? <>読み込めませんでした。<br /><code style={{ font: t.mono }}>{err}</code></>
+              : 'まだ担当がありません。担当の割り当ては運営者と双方の同意で決まります。'}
+          </div>
+        </Card>
       ) : (
         <>
           <div style={{ display: 'grid', gap: 9 }}>

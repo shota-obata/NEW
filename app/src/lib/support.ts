@@ -4,7 +4,7 @@
 // ここで staff_id を指定しないのは、指定しなくても担当分しか来ないから。
 // 「担当外が見えないこと」は 0007 のテストで検証済み。
 
-import { sb } from './api';
+import { sb, unwrap } from './api';
 import type { Record_ } from './staff';
 
 export type Staff = { id: string; person_code: string; display_name: string };
@@ -13,11 +13,11 @@ export type Staff = { id: string; person_code: string; display_name: string };
 export async function assignedStaff(): Promise<Staff[]> {
   const { data: u } = await sb.auth.getUser();
   if (!u.user) return [];
-  const { data } = await sb.from('assignments')
+  const rows = unwrap('assignedStaff', await sb.from('assignments')
     .select('staff_id, users:staff_id(id, person_code, display_name)')
-    .eq('support_id', u.user.id).eq('active', true);
-  return (data ?? [])
-    .map((a) => a.users as unknown as Staff)
+    .eq('support_id', u.user.id).eq('active', true));
+  return rows
+    .map((a) => (a as unknown as { users: Staff | null }).users)
     .filter((x): x is Staff => !!x);
 }
 
@@ -29,11 +29,10 @@ export async function assignedStaff(): Promise<Staff[]> {
 export async function sharedRecords(): Promise<(Record_ & { staff_id: string })[]> {
   const { data: u } = await sb.auth.getUser();
   if (!u.user) return [];
-  const { data } = await sb.from('practice_records')
+  return unwrap('sharedRecords', await sb.from('practice_records')
     .select('*').not('shared_at', 'is', null).is('deleted_at', null)
     .neq('staff_id', u.user.id)
-    .order('shared_at', { ascending: false }).limit(30);
-  return (data ?? []) as (Record_ & { staff_id: string })[];
+    .order('shared_at', { ascending: false }).limit(30)) as (Record_ & { staff_id: string })[];
 }
 
 // 開いた事実を残す。就業規則 第5条第1項 — 誰がいつ見たかを本人に開示する。
@@ -97,11 +96,9 @@ export async function attention(): Promise<Attention[]> {
   const { data: u } = await sb.auth.getUser();
   if (!u.user) return [];
 
-  const { data: asg } = await sb.from('assignments')
+  const rows = unwrap('attention', await sb.from('assignments')
     .select('staff_id, scope, users:staff_id(id, person_code, display_name)')
-    .eq('support_id', u.user.id).eq('active', true);
-
-  const rows = (asg ?? []) as unknown as
+    .eq('support_id', u.user.id).eq('active', true)) as unknown as
     { staff_id: string; scope: string; users: Staff | null }[];
 
   const [cons, recs, seen] = await Promise.all([

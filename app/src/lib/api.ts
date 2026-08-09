@@ -137,3 +137,23 @@ export async function myCredentialState() {
 }
 
 export const session = () => sb.auth.getSession().then(r => r.data.session as Session | null);
+
+// ---- 失敗を握り潰さない ------------------------------------------------
+// 一覧を引く箇所で error を見ずに (data ?? []) と書くと、
+// 権限エラーもRLS拒否も「0件」と区別できなくなる。
+// 空に見える画面の原因が分からなくなるので、必ず記録に残す。
+// 直近の失敗。画面に出すために持つ（スマホではコンソールが見えない）
+let lastError: string | null = null;
+export const lastQueryError = () => lastError;
+export const clearQueryError = () => { lastError = null; };
+
+export function unwrap<T>(
+  where: string, r: { data: T[] | null; error: { message: string; code?: string } | null },
+): T[] {
+  if (r.error) {
+    lastError = `${where}: ${r.error.code ?? ''} ${r.error.message}`;
+    console.warn('[growth-os]', lastError);
+    return [];
+  }
+  return r.data ?? [];
+}
