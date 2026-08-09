@@ -18,7 +18,7 @@ import { JourneyScreen, CapMap, InboxScreen, PostNotice, Holds,
          NewCheckpoint, NextQuestion } from './screens/Core';
 import { RoleSwitch } from './screens/Role';
 import { Personal } from './screens/Personal';
-import { currentCP, myJourney, checkpoints } from './lib/core';
+import { currentCP, myJourney, checkpoints, hasUnread } from './lib/core';
 import { assignedStaff } from './lib/support';
 import { gateOpen } from './lib/mgmt';
 import { myStore } from './lib/staff';
@@ -61,7 +61,15 @@ export function App() {
     { journeyId: string; nextCode: string; existing: string[]; cpId?: string } | null>(null);
   const [targets, setTargets] = useState<{ id: string; display_name: string }[]>([]);
   const [subView, setSubView] = useState<string | null>(null);
+  // 深い画面から「戻る」で元いた場所に帰るための覚え書き。
+  // home に固定すると、スタッフ詳細から通達を書いたあと一覧まで飛ばされる
+  const [from, setFrom] = useState<{ nav: string; sub: string | null } | null>(null);
+  const back = () => {
+    if (from) { setNav(from.nav); setSub(from.sub); setFrom(null); setRecId(null); }
+    else home();
+  };
   const [gateOk, setGateOk] = useState<boolean | null>(null);
+  const [unread, setUnread] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -82,6 +90,7 @@ export function App() {
       assignedStaff().then((xs) =>
         setTargets(xs.map((x) => ({ id: x.id, display_name: x.display_name }))));
       gateOpen().then(setGateOk);
+      hasUnread().then(setUnread);
     })();
   }, []);
 
@@ -114,7 +123,8 @@ export function App() {
   const bar = role === 'staff'
     ? { tabs: <TabBar items={tabs.staff} at={nav} onGo={go} /> }
     : role === 'support'
-      ? { nav: <Pills items={tabs.support} at={nav} onGo={go} /> }
+      ? { nav: <Pills items={tabs.support} at={nav} onGo={go}
+                      dot={unread ? 'inbox' : undefined} /> }
       : { nav: <MgmtNav items={tabs.mgmt} at={nav} onGo={go} /> };
 
   // ---- 役割の切替（兼務がいる。小畑さんは Support ＋ Staff）----
@@ -135,7 +145,9 @@ export function App() {
   // ---- 共通 ----
   if (nav === 'inbox') return (
     <InboxScreen nav={bar} onBack={home}
-      onOpenRecord={role === 'staff' ? (id) => { setRecId(id); setNav('practice'); } : undefined} />
+      onOpenRecord={role === 'staff'
+        ? (id) => { setFrom({ nav: 'inbox', sub: null }); setRecId(id); setNav('practice'); }
+        : undefined} />
   );
   if (nav === 'holds') return <Holds nav={bar} onBack={home} />;
   if (nav === 'settings' && role !== 'mgmt') return (
@@ -200,7 +212,7 @@ export function App() {
       <SharedRecord id={recId} onBack={() => setRecId(null)} />
     );
     if (nav === 'notice') return (
-      <PostNotice kind="support_to_mgmt" nav={bar} targets={targets} onBack={home} />
+      <PostNotice kind="support_to_mgmt" nav={bar} targets={targets} onBack={back} />
     );
     if (nav === 'newcp' && cpCtx) return (
       <NewCheckpoint journeyId={cpCtx.journeyId} nextCode={cpCtx.nextCode}
@@ -223,7 +235,7 @@ export function App() {
         <StaffDetail staffId={sub} nav={bar}
           onBack={() => { setSub(null); setSubView(null); }}
           onOpenRecord={(id) => setRecId(id)}
-          onNotice={() => go('notice')}
+          onNotice={() => { setFrom({ nav: 'staff', sub }); setSub(null); setNav('notice'); }}
           onNewCp={async () => { const x = await cpContext(sub); if (x) { setCpCtx(x); setNav('newcp'); } }}
           onNextQuestion={async (cpId) => {
             const x = await cpContext(sub); if (x) { setCpCtx({ ...x, cpId }); setNav('nextq'); }
@@ -246,7 +258,7 @@ export function App() {
   if (nav === 'map') return <CapMap nav={bar} onBack={home} />;
 
   if (nav === 'practice') return (
-    <Practice id={recId} storeId={storeId} onBack={home} />
+    <Practice id={recId} storeId={storeId} onBack={back} />
   );
   return (
     <Home name={name} nav={bar}

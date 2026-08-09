@@ -12,7 +12,7 @@ import { c, t, r } from '../ui/tokens';
 import { consentGap, supportQuality, gateOpen, policyState, storageForecast,
          rollout, issueCode, issuePin, unlock, devicesOf, revokeDevice,
          slotsOfWeek, openSlot, allAssignments, proposeEnd, saveSettings, fixables,
-         businessHours, announcePolicy, policyNudgeCount, nudgeUnconsented,
+         businessHours, announcePolicy, policyNudgeCount, nudgeUnconsented, orgSize,
          hoursNoticeBody, saveHours, deletionRequests, approveDeletion, cancelDeletion,
          metricsFor, postIndividual, supports,
          type Hours, type Metric, type MetricKey,
@@ -179,8 +179,11 @@ export function Quality(p: { onBack: () => void ; nav?: NavSlots}) {
   const [open, setOpen] = useState<boolean | null>(null);
   const [rows, setRows] = useState<Quality[]>([]);
   const [gap, setGap] = useState<{ total: number; consented: number } | null>(null);
+  // 基準は店舗設定から引く。直値で書くと、設定を変えても文面が古いまま残る
+  const [base, setBase] = useState(1.0);
 
   useEffect(() => {
+    storeSettings().then((st) => st && setBase(st.response_baseline_days));
     gateOpen().then(setOpen);
     supportQuality().then(setRows);
     consentGap().then((g) => g && setGap(g));
@@ -238,7 +241,7 @@ export function Quality(p: { onBack: () => void ; nav?: NavSlots}) {
 
       <Spacer />
       <Card>
-        <Kicker>平均レスポンス（基準 1.0日）</Kicker>
+        <Kicker>平均レスポンス（基準 {base} 日）</Kicker>
         <div style={{ marginTop: 14, display: 'grid', gap: 14 }}>
           {rows.length === 0 ? (
             <div style={{ ...t.small, color: c.weaker }}>まだ返答がありません。</div>
@@ -781,6 +784,7 @@ export function PolicyNudge(p: { onBack: () => void; nav?: NavSlots }) {
   const [pol, setPol] = useState<{ id: string; version: string } | null>(null);
   const [store, setStore] = useState<string | null>(null);
   const [n, setN] = useState(0);
+  const [org, setOrg] = useState<{ people: number; stores: number } | null>(null);
   const [body, setBody] = useState(
     '就業規則の追加条文について、まだ同意が入っていない方がいます。\n'
     + '受信ボックスから全文を読み、内容を確かめたうえで決めてください。');
@@ -794,6 +798,7 @@ export function PolicyNudge(p: { onBack: () => void; nav?: NavSlots }) {
       if (d) setN(await policyNudgeCount(d.id));
     });
     businessHours().then((x) => setStore(x?.id ?? null));
+    orgSize().then(setOrg);
   };
   useEffect(() => { load(); }, []);
 
@@ -823,7 +828,9 @@ export function PolicyNudge(p: { onBack: () => void; nav?: NavSlots }) {
 
       <Spacer h={18} />
       <Card tone="teal">
-        <Kicker tone="teal">全体通達 · 全社9名（2店舗） · {n}/3回</Kicker>
+        <Kicker tone="teal">
+          全体通達{org ? ` · 全社${org.people}名（${org.stores}店舗）` : ''} · {n}/3回
+        </Kicker>
         <div style={{ marginTop: 11, fontSize: 14.5, fontWeight: 640, color: c.tealDeep }}>
           就業規則 追加条文への同意のお願い
         </div>
