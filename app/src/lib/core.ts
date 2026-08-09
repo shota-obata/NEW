@@ -130,6 +130,12 @@ export async function shareNote(note_id: string) {
   return !error;
 }
 
+// 開示をやめる。相手には通知しない（やめたことを知らせるのは、開示より重い）
+export async function unshareNote(note_id: string) {
+  const { error } = await sb.from('personal_note_shares').delete().eq('note_id', note_id);
+  return !error;
+}
+
 export const noteShares = async (note_id: string) =>
   ((await sb.from('personal_note_shares').select('shared_with').eq('note_id', note_id))
     .data ?? []).length;

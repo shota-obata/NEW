@@ -13,7 +13,8 @@ import { useEffect, useState } from 'react';
 import { Screen, Bar, H, P, Card, Kicker, Button, Spacer, type NavSlots } from '../ui/kit';
 import { c, t, r } from '../ui/tokens';
 import {
-  notes, addNote, saveNote, removeNote, shareNote, isSharedDevice, type Note,
+  notes, addNote, saveNote, removeNote, shareNote, unshareNote, noteShares,
+  isSharedDevice, type Note,
 } from '../lib/core';
 
 export function Personal(p: { onBack: () => void; nav?: NavSlots }) {
@@ -132,6 +133,9 @@ function NoteCard(q: { note: Note; canShare: boolean; onDone: () => void }) {
   const [body, setBody] = useState(q.note.body);
   const [shown, setShown] = useState(false);
 
+  useEffect(() => { if (q.canShare) noteShares(q.note.id).then((n) => setShown(n > 0)); },
+            [q.note.id, q.canShare]);
+
   return (
     <Card tone={shown ? 'teal' : 'plain'}>
       <textarea value={body} onChange={(e) => setBody(e.target.value)}
@@ -153,7 +157,11 @@ function NoteCard(q: { note: Note; canShare: boolean; onDone: () => void }) {
           </button>
         )}
         {shown && (
-          <span style={{ fontSize: 11.5, color: c.tealText }}>見せました</span>
+          <button onClick={async () => { if (await unshareNote(q.note.id)) setShown(false); }}
+            style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
+                     font: 'inherit', fontSize: 11.5, color: c.tealText }}>
+            見せています · やめる
+          </button>
         )}
         <button onClick={async () => { await removeNote(q.note.id); q.onDone(); }}
           style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
