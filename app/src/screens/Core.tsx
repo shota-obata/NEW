@@ -18,6 +18,7 @@ import {
   type Consult, type Journey, type CP, type Axis, type Param, type Val,
   type InboxRow, type StoreSettings, type CondRow,
 } from '../lib/core';
+import { agreeAssignment, declineAssignment } from '../lib/mgmt';
 
 const day = (s: string) => s.slice(5, 10).replace('-', '/');
 
@@ -837,6 +838,34 @@ export function InboxScreen(p: {
                     {/* 返信できるのは「次の問い」だけ。催促を会話にしない（T） */}
                     {canReply(x.source_kind) && (
                       <Button variant="outline" onClick={() => setAsk(x)}>返信する</Button>
+                    )}
+                    {/* 担当の同意。承諾すると active になり、Staff と Support の
+                        両方に通達が届く。断るときは理由が30字以上要る */}
+                    {x.assignment && !x.assignment.settled && !x.assignment.declined && (
+                      <>
+                        <Button variant="outline" onClick={async () => {
+                          await agreeAssignment(x.assignment!.id);
+                          await markRead(x.id); load();
+                        }}>この担当を受ける</Button>
+                        <Button variant="ghost" onClick={async () => {
+                          const why = prompt(
+                            `${x.assignment!.name}さんの担当を断る理由（30字以上）。\n`
+                            + '本人には何も出ません。');
+                          if (!why || why.trim().length < 30) return;
+                          await declineAssignment(x.assignment!.id, why.trim());
+                          await markRead(x.id); load();
+                        }}>断る</Button>
+                      </>
+                    )}
+                    {x.assignment?.settled && (
+                      <span style={{ fontSize: 11.5, color: c.tealText, alignSelf: 'center' }}>
+                        受けました
+                      </span>
+                    )}
+                    {x.assignment?.declined && (
+                      <span style={{ fontSize: 11.5, color: c.warmText, alignSelf: 'center' }}>
+                        成立しませんでした
+                      </span>
                     )}
                     {x.source_kind === 'record_reply' && p.onOpenRecord && x.source_id && (
                       <Button variant="outline"

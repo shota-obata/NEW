@@ -340,10 +340,19 @@ export const canReply = (kind: string) => kind === 'os_suggestion';
 // 受信ボックスの1件に、中身を添えて返す
 export type InboxRow = Inbox & {
   from: string; title: string; body: string; notice_kind?: string;
+  assignment?: { id: string; name: string; settled: boolean; declined: boolean };
 };
 
 export async function inboxRows(trash = false): Promise<InboxRow[]> {
   const items = await inbox(trash);
+  const asgIds = items.filter((x) => x.source_kind === 'agreement_request' && x.source_id)
+                      .map((x) => x.source_id as string);
+  const ax = asgIds.length
+    ? ((await sb.from('assignments')
+        .select('id, kind, scope, scope_note, expires_at, active, declined_at,'
+              + ' staff:staff_id(display_name, person_code)')
+        .in('id', asgIds)).data ?? [])
+    : [];
   const noticeIds = items.filter((x) => x.source_kind === 'notice' && x.source_id)
                          .map((x) => x.source_id as string);
   const recIds = items.filter((x) => x.source_kind === 'record_reply' && x.source_id)
@@ -362,6 +371,23 @@ export async function inboxRows(trash = false): Promise<InboxRow[]> {
         { kind: string; title: string; body: string } | undefined;
       return { ...x, from: inboxFrom('notice', n?.kind), title: n?.title ?? '通達',
                body: n?.body ?? '', notice_kind: n?.kind };
+    }
+    if (x.source_kind === 'agreement_request') {
+      const a = ax.find((v) => (v as unknown as { id: string }).id === x.source_id) as unknown as {
+        kind: string; scope: string; scope_note: string | null; expires_at: string | null;
+        active: boolean; declined_at: string | null;
+        staff: { display_name: string; person_code: string } | null;
+      } | undefined;
+      const name = a?.staff?.display_name ?? '—';
+      return { ...x, from: inboxFrom(x.source_kind),
+               title: `${name}さんの担当`,
+               body: a
+                 ? `${a.kind === 'temporary' ? '応援' : '担当'}`
+                   + `${a.scope === 'limited' ? `・範囲つき（${a.scope_note ?? ''}）` : ''}`
+                   + `${a.expires_at ? `・${a.expires_at.slice(0, 10)}まで` : ''}`
+                 : '',
+               assignment: a ? { id: x.source_id as string, name,
+                                 settled: a.active, declined: !!a.declined_at } : undefined };
     }
     if (x.source_kind === 'record_reply') {
       const r = rx.find((v) => (v as { id: string }).id === x.source_id) as
