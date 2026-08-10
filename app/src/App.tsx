@@ -61,6 +61,7 @@ export function App() {
     { journeyId: string; nextCode: string; existing: string[]; cpId?: string } | null>(null);
   const [targets, setTargets] = useState<{ id: string; display_name: string }[]>([]);
   const [subView, setSubView] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ title: string; body: string } | null>(null);
   // 深い画面から「戻る」で元いた場所に帰るための覚え書き。
   // home に固定すると、スタッフ詳細から通達を書いたあと一覧まで飛ばされる
   const [from, setFrom] = useState<{ nav: string; sub: string | null } | null>(null);
@@ -178,7 +179,19 @@ export function App() {
       );
       return (
         <Design nav={bar} onQuality={() => go('view')}
-          onCapDefs={() => setSubView('capdefs')} onBack={home} />
+          onCapDefs={() => setSubView('capdefs')}
+          onOpenSlot={(slot, name) => {
+            // 枠を開けるのは通達でしか成立しない（シフトは人が動かすもの）。
+            // 文面を下書きして通達へ送る
+            setDraft({
+              title: '練習枠のお願い',
+              body: `${slot} を、${name ? name + 'さんの' : ''}練習の枠として開けたいです。\n`
+                  + 'いまの担当量では、必要なぶんの枠が取れていません。\n'
+                  + 'シフトの調整をお願いします。',
+            });
+            setNav('notice');
+          }}
+          onBack={home} />
       );
     }
     if (nav === 'devices') return <Devices nav={bar} onBack={home} />;
@@ -186,8 +199,9 @@ export function App() {
       // 全体通達と個別通達。宛先を絞れるのは個別だけ
       if (sub === 'one') return <Individual nav={bar} onBack={() => setSub(null)} />;
       return (
-        <PostNotice kind="mgmt_to_all" nav={bar}
-          onIndividual={() => setSub('one')} onBack={home} />
+        <PostNotice kind="mgmt_to_all" nav={bar} draft={draft ?? undefined}
+          onIndividual={() => setSub('one')}
+          onBack={() => { setDraft(null); home(); }} />
       );
     }
     if (nav === 'settings') {
