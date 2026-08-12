@@ -4,16 +4,18 @@
 // 到達は2段（Growth OS の条件 → Support の実務判断）が揃ったときだけ。
 // 片方だけは保留で、落ちたのではなく預けてある状態として本人にも見せる。
 
-import { useEffect, useState } from 'react';
-import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer , type NavSlots } from '../ui/kit';
-import { c, t, r } from '../ui/tokens';
+import { Fragment, useEffect, useState } from 'react';
+import { Screen, Bar, H, P, Card, Kicker, Button, Warn, Spacer, type NavSlots } from '../ui/kit';
+import { c, t, r, serif } from '../ui/tokens';
 import {
   myJourney, supportDecide, hold, params, values, markRead,
   softDelete, restore, postNotice,
   inboxRows, canReply, askAbout, storeSettings, currentCP, cpConditions, holdCards,
   shareTargets, shareWith, setVision, createCheckpoint, condLabel, FIELD_LABEL,
-  departments, levelsOf, historyOf, stepMeaning, STEPS,
-  type Dept, type Level,
+  axes, levelsOf, historyOf, stepMeaning, STEPS,
+  picks, oneHand, band, focusRows, setFocus, clearFocus,
+  adjustStep, writeLevel, nameOf, sourcesFor,
+  type Level, type Picked, type Band, type Focus,
   nextQuestions, deliverQuestion, submitForReview, snoozeNudge,
   addParam, sourcePreview, SOURCE_LABEL,
   type ShareTargets, type CondDraft, type CondKind, type NextQDraft,
@@ -425,295 +427,869 @@ export function CapMap(p: {
   staffId?: string; isMgmt?: boolean; defs?: boolean;
   onBack: () => void; nav?: NavSlots;
 }) {
-  const [ds, setDs] = useState<Dept[] | null>(null);
-  const [open, setOpen] = useState<Axis | null>(null);   // 開いている部門
-  const [ps, setPs] = useState<Param[]>([]);
-  const [vs, setVs] = useState<Val[]>([]);
+  const [ps, setPs] = useState<Picked[] | null>(null);
+  const [bd, setBd] = useState<Band | null>(null);
   const [j, setJ] = useState<Journey | null>(null);
   const [vision, setVis] = useState('');
-  const [add, setAdd] = useState(false);
-  const [row, setRow] = useState<Param | null>(null);    // 開いている行
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [all, setAll] = useState(false);          // 38行ぜんぶ
+  const [row, setRow] = useState<{ param: Param; area: Axis } | null>(null);
 
-  useEffect(() => {
-    departments(p.staffId).then(setDs);
-    values(p.staffId).then(setVs);
+  const load = async () => {
+    const xs = await picks(p.staffId);
+    setPs(xs);
+    setNames(await nameOf(xs.map((x) => x.setBy).filter((x): x is string => !!x)));
+    setBd(await band(p.staffId));
     if (!p.defs) myJourney(p.staffId).then((x) => { setJ(x); setVis(x?.vision ?? ''); });
-  }, [p.staffId]);
-
-  const openDept = async (a: Axis) => {
-    setOpen(a); setPs(await params(a.id, p.staffId));
   };
-  const reload = async () => {
-    departments(p.staffId).then(setDs);
-    values(p.staffId).then(setVs);
-    if (open) setPs(await params(open.id, p.staffId));
-  };
+  useEffect(() => { load(); }, [p.staffId]);
 
-  const valOf = (id: string) => vs.find((v) => v.param_id === id);
+  const hand = ps ? oneHand(ps) : null;
 
-  // ---------------- 部門の中 ----------------
-  if (open) return (
-    <Screen {...p.nav} bar={<Bar title={open.label} right={`${ps.filter((x) => !x.parent_id).length} 行`} />}
-      footer={<Button variant="outline" onClick={() => setOpen(null)}>戻る</Button>}>
-
-      <Spacer h={18} />
-      <div style={{ display: 'grid', gap: 14 }}>
-        {ps.filter((x) => !x.parent_id).map((x) => (
-          <div key={x.id}>
-            <MapRow param={x} v={valOf(x.id)} defs={p.defs} onOpen={() => setRow(x)} />
-            {ps.filter((k) => k.parent_id === x.id).length > 0 && (
-              <div style={{ marginTop: 10, paddingLeft: 12,
-                            borderLeft: `2px solid ${c.line}`, display: 'grid', gap: 10 }}>
-                {ps.filter((k) => k.parent_id === x.id).map((k) => (
-                  <MapRow key={k.id} param={k} v={valOf(k.id)} defs={p.defs}
-                    sub onOpen={() => setRow(k)} />
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {(!p.staffId || p.defs) && (
-        <>
-          <Spacer h={16} />
-          <button onClick={() => setAdd(true)}
-            style={{ width: '100%', minHeight: 44, cursor: 'pointer', font: 'inherit',
-                     fontSize: 12.5, fontWeight: 640, color: c.weak, background: 'transparent',
-                     border: `1.5px dashed ${c.dash}`, borderRadius: r.input }}>
-            ＋ {open.label}に工程を追加
-          </button>
-        </>
-      )}
-      <Spacer />
-
-      {row && (
-        <RowSheet param={row} v={valOf(row.id)} deptLabel={open.label}
-          staffId={p.staffId} onClose={() => setRow(null)} />
-      )}
-      {add && (
-        <AddParamSheet axisId={open.id} axisName={open.label} storeCommon={!!p.defs}
-          onClose={() => setAdd(false)}
-          onAdded={() => { setAdd(false); reload(); }} />
-      )}
-    </Screen>
+  if (all) return (
+    <AllRows staffId={p.staffId} defs={p.defs} picks={ps ?? []}
+      onOpen={(param, area) => setRow({ param, area })}
+      onBack={() => { setAll(false); load(); }} nav={p.nav} />
   );
 
-  // ---------------- 部門の一覧 ----------------
   return (
     <Screen {...p.nav} bar={<Bar title="Capability Map"
       right={p.defs ? '定義だけ' : '点数ではありません'} />}
       footer={<Button variant="outline" onClick={p.onBack}>戻る</Button>}>
 
-      {/* どこへ行きたいかは本人が書く。いまどこにいるかは Support が書く */}
+      {/* ---- 向かう先。書けるのは本人だけ ---- */}
       {!p.defs && (
         <>
           <Spacer h={18} />
-          <label style={{ display: 'grid', gap: 7 }}>
-            <span style={t.field}>どこへ向かっていますか</span>
+          <Kicker>向かう先</Kicker>
+          {p.staffId ? (
+            <p style={{ margin: '9px 0 0', font: `17px ${serif}`, lineHeight: 1.7 }}>
+              {j?.vision || 'まだ書かれていません。'}
+            </p>
+          ) : (
             <textarea value={vision} onChange={(e) => setVis(e.target.value)}
-              readOnly={!!p.staffId}
-              onBlur={() => { if (!p.staffId && j && vision.trim()) setVision(j.id, vision.trim()); }}
-              placeholder="骨格が違っても、同じ基準で似合わせを説明できる"
-              style={{ ...area, minHeight: 68 }} />
-          </label>
+              onBlur={() => { if (j && vision.trim() !== (j.vision ?? '')) setVision(j.id, vision.trim()); }}
+              placeholder="まだ書いていません。"
+              style={{ width: '100%', marginTop: 9, minHeight: 62, padding: '10px 12px',
+                       borderRadius: r.input, border: `1px solid ${c.line}`, background: c.input,
+                       font: `17px ${serif}`, lineHeight: 1.7, color: c.text,
+                       outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
+          )}
+          {!p.staffId && (
+            <div style={{ marginTop: 8, ...t.small, color: c.weaker }}>
+              担当のSupportも読みます。
+            </div>
+          )}
+        </>
+      )}
 
-          {j?.current_position && (
+      {/* ---- 次に見るところ。開いた瞬間に立つのはこれ1枚だけ ---- */}
+      {!p.defs && (
+        <>
+          <Spacer h={20} />
+          {ps === null ? <P>読み込んでいます…</P> : !hand ? (
+            <Card tone="flat">
+              <div style={{ ...t.small, color: c.weak, lineHeight: 1.9 }}>
+                まだ、どの部門も始まっていません。
+                <b style={{ fontWeight: 660, color: c.text }}>開くのは担当のSupportです。</b>
+              </div>
+            </Card>
+          ) : (
+            <div style={{ padding: '24px 22px', borderRadius: 20,
+                          background: c.tealBg, border: `1.5px solid ${c.teal}` }}>
+              <div style={{ ...t.kicker, color: c.tealText }}>いま見ているところ</div>
+              <div style={{ marginTop: 5, fontSize: 11.5, color: c.label }}>
+                {hand.area.label}
+              </div>
+              <h2 style={{ margin: '9px 0 0', font: `29px ${serif}`, lineHeight: 1.3,
+                           color: c.focusDeep }}>{hand.param.name}</h2>
+
+              <div style={{ marginTop: 16, paddingTop: 15,
+                            borderTop: `1px solid ${c.tealLine}`, display: 'grid', gap: 12 }}>
+                <StepLine label="いま" step={hand.value} paramId={hand.param.id} />
+                <StepLine label="次" step={Math.min(100, hand.value + 25)}
+                  paramId={hand.param.id} />
+              </div>
+
+              {/* 指定の理由。自動のときは内箱ごと出さない */}
+              {hand.reason && (
+                <div style={{ marginTop: 15, padding: '12px 14px', borderRadius: r.input,
+                              background: c.tealBg, border: `1px solid ${c.tealLine}` }}>
+                  <div style={{ fontSize: 12.5, lineHeight: 1.75, color: c.tealDeep }}>
+                    {hand.reason}
+                  </div>
+                </div>
+              )}
+              {hand.setBy && (
+                <div style={{ marginTop: 9, fontSize: 10.5, color: c.focusSub }}>
+                  {names[hand.setBy] ?? '—'}さんが {hand.setAt?.slice(5, 10).replace('-', '/')} に指しました
+                </div>
+              )}
+
+              <div style={{ marginTop: 16, display: 'grid', gap: 9 }}>
+                <Button onClick={() => setRow({ param: hand.param, area: hand.area })}>
+                  段の中身を読む
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ---- いまいるところ。Support が書き、本人は読むだけ ---- */}
+      {!p.defs && (
+        <>
+          <Spacer h={16} />
+          <Card tone="flat">
+            <Kicker>いまいるところ · 担当のSupportが書いています</Kicker>
+            <p style={{ margin: '9px 0 0', fontSize: 13, lineHeight: 1.75, color: c.weak }}>
+              {j?.current_position || 'まだ書かれていません。'}
+            </p>
+          </Card>
+        </>
+      )}
+
+      {/* ---- 全体（帯1本）。本数は帯の中に入れず凡例に出す ---- */}
+      {!p.defs && bd && (
+        <>
+          <Spacer h={18} />
+          <Kicker>全体</Kicker>
+          <BandBar b={bd} />
+          <div style={{ marginTop: 11, ...t.small, color: c.weaker, lineHeight: 1.8 }}>
+            帯は<b style={{ fontWeight: 660, color: c.text }}>本数</b>です。長さを人と比べるものではありません。
+            {bd.not > 0 && ` まだ開いていない行が ${bd.not} あります。`}
+          </div>
+        </>
+      )}
+
+      <Spacer />
+      <Button variant="outline" onClick={() => setAll(true)}>38行ぜんぶを見る</Button>
+
+      <Spacer />
+      <div style={{ ...t.small, color: c.weaker, lineHeight: 1.85 }}>
+        {p.defs
+          ? '個人の Capability Map は運営者には見えません。ここは行の定義だけです。'
+          : '数値が動くのは、Checkpoint に到達したときと、担当のSupportが調整したときだけです。記録を出した数では動きません。スタッフ間では共有されません。'}
+      </div>
+      <Spacer />
+
+      {row && (
+        <RowSheet param={row.param} area={row.area} staffId={p.staffId}
+          onClose={() => { setRow(null); load(); }} />
+      )}
+    </Screen>
+  );
+}
+
+void AddParamSheet;   // 行の追加は 38行ぜんぶ の中から使う（次のPRで繋ぐ）
+
+// 一手カードの「いま · 25 手順として再現できる」＋定義文
+function StepLine(q: { label: string; step: number; paramId: string }) {
+  const [body, setBody] = useState<string | null>(null);
+  useEffect(() => {
+    levelsOf(q.paramId).then((ls) => setBody(ls.find((x) => x.step === q.step)?.body ?? null));
+  }, [q.paramId, q.step]);
+
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, fontWeight: 640, color: c.tealDeep }}>
+        {q.label} · {q.step > 0 ? `${q.step} ${stepMeaning(q.step)}` : 'まだ始まっていません'}
+      </div>
+      {q.step > 0 && (
+        <div style={{ marginTop: 5, fontSize: 12, lineHeight: 1.75,
+                      color: body ? c.tealDeep : c.focusSub }}>
+          {body ?? 'まだ書かれていません。'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 全体の帯（16a）。高さ16px、本数は下の凡例に
+const BandBar = (q: { b: Band; compact?: boolean }) => {
+  const seg: [number, string, string][] = [
+    [q.b.can,    c.band1, 'できる'],
+    [q.b.choose, c.band2, '選べる'],
+    [q.b.tell,   c.band3, '言える'],
+    [q.b.not,    c.band0, 'まだ'],
+  ];
+  const total = seg.reduce((n, s) => n + s[0], 0) || 1;
+
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 2, marginTop: 11 }}>
+        {seg.filter(([n]) => n > 0).map(([n, col, label]) => (
+          <div key={label} style={{ flex: n, height: 16, borderRadius: 5, background: col,
+                                    border: col === c.band0 ? `1px solid ${c.line}` : 0 }} />
+        ))}
+        {total === 0 && <div style={{ flex: 1, height: 16, borderRadius: 5, background: c.band0 }} />}
+      </div>
+      {!q.compact && (
+        <div style={{ marginTop: 9, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          {seg.map(([n, col, label]) => (
+            <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 5,
+                                       fontSize: 11, color: c.weak }}>
+              <span style={{ width: 9, height: 9, borderRadius: 3, background: col,
+                             border: col === c.band0 ? `1px solid ${c.line}` : 0 }} />
+              {label} {n}
+            </span>
+          ))}
+        </div>
+      )}
+    </>
+  );
+};
+
+// ============================================================
+// 38行ぜんぶ（4-1）
+// ============================================================
+
+function AllRows(q: {
+  staffId?: string; defs?: boolean; picks: Picked[];
+  onOpen: (p: Param, a: Axis) => void; onBack: () => void; nav?: NavSlots;
+}) {
+  const [mode, setMode] = useState<'step' | 'dept'>('step');
+  const [rows, setRows] = useState<{ a: Axis; ps: Param[] }[]>([]);
+  const [vs, setVs] = useState<Val[]>([]);
+  const [open, setOpen] = useState<string | null>(null);   // 折り畳み
+  const [only, setOnly] = useState<string | null>(null);   // 段側の絞り
+
+  useEffect(() => {
+    (async () => {
+      const as = await axes();
+      setVs(await values(q.staffId));
+      const out: { a: Axis; ps: Param[] }[] = [];
+      for (const a of as) out.push({ a, ps: (await params(a.id, q.staffId)).filter((x) => !x.parent_id) });
+      setRows(out);
+    })();
+  }, [q.staffId]);
+
+  const val = (id: string) => vs.find((v) => v.param_id === id)?.value ?? 0;
+  const srcN = (id: string) => vs.find((v) => v.param_id === id)?.source_count ?? 0;
+  const isNext = (id: string) => q.picks.some((x) => x.param.id === id);
+  const bandOf = (ps: Param[]): Band => ps.reduce((b, x) => {
+    const v = val(x.id);
+    if (v >= 75) b.tell++; else if (v === 50) b.choose++;
+    else if (v === 25) b.can++; else b.not++;
+    return b;
+  }, { can: 0, choose: 0, tell: 0, not: 0 });
+
+  const started = rows.filter((x) => x.ps.some((p) => val(p.id) > 0));
+  const notYet  = rows.filter((x) => x.ps.length > 0 && !x.ps.some((p) => val(p.id) > 0));
+
+  return (
+    <Screen {...q.nav} bar={<Bar title="38行ぜんぶ" right={`${rows.reduce((n, x) => n + x.ps.length, 0)} 行`} />}
+      footer={<Button variant="outline" onClick={q.onBack}>戻る</Button>}>
+
+      <div style={{ marginTop: 18, display: 'flex', gap: 5, padding: 4,
+                    borderRadius: r.input, background: c.segBg }}>
+        {([['step', '段でまとめる'], ['dept', '部門でまとめる']] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setMode(k)}
+            style={{ flex: 1, minHeight: 40, borderRadius: 10, border: 0, cursor: 'pointer',
+                     font: 'inherit', fontSize: 12, fontWeight: 700,
+                     background: mode === k ? c.card : 'transparent',
+                     color: mode === k ? c.text : c.weaker }}>{label}</button>
+        ))}
+      </div>
+
+      {mode === 'step' ? (
+        <>
+          {/* 部門ごとの帯7本。押すとその部門に絞る */}
+          <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
+            {rows.filter((x) => x.ps.length > 0).map(({ a, ps }) => (
+              <button key={a.id} onClick={() => setOnly(only === a.id ? null : a.id)}
+                style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
+                         background: 'transparent', border: 0, padding: 0,
+                         opacity: only && only !== a.id ? 0.4 : 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 640 }}>{a.label}</span>
+                  <span style={{ fontSize: 10.5, color: c.label }}>{ps.length} 行</span>
+                </div>
+                <BandBar b={bandOf(ps)} compact />
+              </button>
+            ))}
+          </div>
+
+          <Spacer />
+          <div style={{ display: 'grid', gap: 11 }}>
+            {STEPS.slice().reverse().concat([0 as never]).map((step) => {
+              const list = rows
+                .filter((x) => !only || x.a.id === only)
+                .flatMap(({ a, ps }) => ps.filter((x) => val(x.id) === step).map((x) => ({ a, x })));
+              if (list.length === 0) return null;
+              return (
+                <Card key={step} tone="plain"
+                  style={step === 75 ? { border: `1px solid ${c.tealLine}` } : undefined}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 9 }}>
+                    <span style={{ font: `19px ${serif}` }}>{step || '—'}</span>
+                    <span style={{ flex: 1, fontSize: 12, color: c.weak }}>
+                      {step ? stepMeaning(step) : 'まだ'}
+                    </span>
+                    <span style={{ fontSize: 10.5, color: c.label }}>{list.length} 行</span>
+                  </div>
+                  <div style={{ marginTop: 11, display: 'grid', gap: 1 }}>
+                    {list.map(({ a, x }) => (
+                      <button key={x.id} onClick={() => q.onOpen(x, a)}
+                        style={{ width: '100%', textAlign: 'left', cursor: 'pointer',
+                                 font: 'inherit', display: 'flex', alignItems: 'center', gap: 10,
+                                 padding: '9px 10px', border: 0, borderRadius: r.input,
+                                 background: isNext(x.id) ? c.tealBg : 'transparent' }}>
+                        <span style={{ width: 82, flex: '0 0 auto', fontSize: 11, color: c.label }}>
+                          {a.label}
+                        </span>
+                        <span style={{ flex: 1, fontSize: 13 }}>{x.name}</span>
+                        {isNext(x.id) && (
+                          <span style={{ padding: '2px 7px', borderRadius: r.pill, fontSize: 9.5,
+                                         fontWeight: 700, color: c.tealText,
+                                         border: `1px solid ${c.teal}` }}>次</span>
+                        )}
+                        <span style={{ color: c.label, fontSize: 14 }}>›</span>
+                      </button>
+                    ))}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <>
+          {/* 部門でまとめる。折り畳み。畳んだ行にも「次」を出す */}
+          <div style={{ marginTop: 16, display: 'grid', gap: 9 }}>
+            {started.map(({ a, ps }) => {
+              const nx = q.picks.find((x) => x.area.id === a.id);
+              const isOpen = open === a.id;
+              return (
+                <Card key={a.id} tone="plain">
+                  <button onClick={() => setOpen(isOpen ? null : a.id)}
+                    style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
+                             background: 'transparent', border: 0, padding: 0,
+                             display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <b style={{ fontSize: 13.5, fontWeight: 640 }}>{a.label}</b>
+                    <span style={{ fontSize: 10.5, color: c.label }}>
+                      記録 {ps.reduce((n, x) => n + srcN(x.id), 0)}
+                    </span>
+                    <span style={{ flex: 1 }} />
+                    {!isOpen && nx && (
+                      <span style={{ fontSize: 11.5, color: c.tealText }}>次 · {nx.param.name}</span>
+                    )}
+                    <span style={{ color: c.label, fontSize: 14 }}>{isOpen ? '⌃' : '⌄'}</span>
+                  </button>
+
+                  {isOpen && (
+                    <div style={{ marginTop: 12 }}>
+                      <BandBar b={bandOf(ps)} compact />
+                      <div style={{ marginTop: 12, display: 'grid',
+                                    gridTemplateColumns: '1fr 1fr', gap: 7 }}>
+                        {ps.map((x) => (
+                          <button key={x.id} onClick={() => q.onOpen(x, a)}
+                            style={{ textAlign: 'left', cursor: 'pointer', font: 'inherit',
+                                     padding: '9px 11px', borderRadius: r.input, fontSize: 12,
+                                     background: isNext(x.id) ? c.tealBg : c.flat,
+                                     border: `1px solid ${isNext(x.id) ? c.teal : c.cardLine}` }}>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                              <span style={{ flex: 1 }}>{x.name}</span>
+                              <span style={{ fontSize: 10.5, color: c.label }}>{val(x.id) || '—'}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+
+          {notYet.length > 0 && (
             <>
-              <Spacer h={12} />
+              <Spacer h={14} />
               <Card tone="flat">
-                <Kicker>いまの現在地</Kicker>
-                <p style={{ margin: '9px 0 0', fontSize: 13, lineHeight: 1.85, color: c.weak }}>
-                  {j.current_position}
-                </p>
-                <div style={{ marginTop: 9, fontSize: 11, lineHeight: 1.7, color: c.weaker }}>
-                  ここは担当のSupportが書きます。現在地は、自分では見えにくいものだからです。
+                <Kicker>まだ始まっていません</Kicker>
+                <div style={{ marginTop: 10, display: 'grid', gap: 7 }}>
+                  {notYet.map(({ a, ps }) => (
+                    <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between',
+                                             gap: 10, fontSize: 12.5, color: c.weak }}>
+                      <span>{a.label}</span>
+                      <span style={{ color: c.weaker }}>{ps.length} 行</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 11, ...t.small, color: c.weaker, lineHeight: 1.8 }}>
+                  開くのは担当のSupportです。開いていない部門も、何が待っているかは見えます。
                 </div>
               </Card>
             </>
           )}
         </>
       )}
-
-      <Spacer />
-      <div style={{ display: 'grid', gap: 9 }}>
-        {ds === null ? <P>読み込んでいます…</P> : ds.length === 0 ? (
-          <Card tone="flat"><div style={{ ...t.small, color: c.weak }}>
-            部門がまだありません。
-          </div></Card>
-        ) : ds.map((d) => (
-          <button key={d.axis.id} onClick={() => openDept(d.axis)}
-            style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
-                     padding: '15px 17px', borderRadius: r.card, background: c.card,
-                     border: `1px solid ${c.cardLine}` }}>
-            <div style={{ display: 'flex', alignItems: 'baseline',
-                          justifyContent: 'space-between', gap: 10 }}>
-              <b style={{ fontSize: 14.5, fontWeight: 640 }}>{d.axis.label}</b>
-              <span style={{ fontSize: 11, color: c.label }}>{d.rows} 行</span>
-            </div>
-            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ ...t.kicker, color: c.label, flex: '0 0 auto' }}>
-                {p.defs ? '工程' : d.all100 ? 'ひととおり届いています'
-                 : d.all0 ? 'まだ始まっていません' : '次に見るところ'}
-              </span>
-              <span style={{ flex: 1, fontSize: 12.5, color: c.weak }}>
-                {p.defs || d.all100 || d.all0 ? '' : d.next}
-              </span>
-              <span style={{ color: c.label, fontSize: 15 }}>›</span>
-            </div>
-          </button>
-        ))}
-      </div>
-
-      <Spacer />
-      <Card tone="flat">
-        <div style={{ ...t.small, color: c.weak, lineHeight: 1.9 }}>
-          {p.defs
-            ? <>ここは行の定義だけです。<b style={{ fontWeight: 660, color: c.text }}>誰の値も出ません。</b> 個人の Capability Map は運営者には見えません。</>
-            : <>これは点数ではありません。<b style={{ fontWeight: 660, color: c.text }}>根拠の接続度</b>です。
-               段の意味はどの部門でも同じで、中身だけが部門ごとに違います。
-               数値が動くのは Checkpoint に到達したときだけです。スタッフ間では共有されません。</>}
-        </div>
-      </Card>
       <Spacer />
     </Screen>
   );
 }
 
-// 1行。バッジは value から決めない（状態は capability_sources から来る）
-const MapRow = (q: {
-  param: Param; v?: Val; defs?: boolean; sub?: boolean; onOpen: () => void;
-}) => {
-  const st = q.v?.status ?? '未接続';
-  const [fg, bg, ln] =
-    st === '接続済み' ? [c.tealText, c.tealBg, c.tealLine]
-    : st === '検証中' ? [c.weaker, c.flat, c.line]
-    : [c.warmText, c.warmBg, c.warmLine];
-  const unverified = !!q.v?.unverified;
+// ============================================================
+// 行のシート（4-2 Staff ／ 4-3 Support）
+//
+// 段は「今」（誰が上げたか）、指定は「次」（誰が指したか）。別物として出す。
+// どちらも書いた人の名前を必ず出す。
+// ============================================================
 
-  return (
-    <button onClick={q.onOpen}
-      style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
-               background: 'transparent', border: 0, padding: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline',
-                    justifyContent: 'space-between', gap: 10 }}>
-        <b style={{ fontSize: q.sub ? 12.5 : 14.5, fontWeight: q.sub ? 600 : 640 }}>
-          {q.param.name}
-        </b>
-        {!q.defs && (
-          <span style={{ padding: '4px 9px', borderRadius: r.pill, fontSize: 10.5,
-                         fontWeight: 700, color: fg, background: bg, flex: '0 0 auto',
-                         border: unverified ? `1px dashed ${c.dash}` : `1px solid ${ln}` }}>
-            {unverified ? '未検証' : st}
-          </span>
-        )}
-      </div>
-
-      {!q.defs && (
-        <div style={{ position: 'relative', height: q.sub ? 4 : 6, marginTop: q.sub ? 6 : 9,
-                      borderRadius: r.pill, background: c.line }}>
-          <div style={{ position: 'absolute', inset: 0, width: `${q.v?.value ?? 0}%`,
-                        borderRadius: r.pill,
-                        background: st === '未接続' ? c.warmBar : c.teal }} />
-        </div>
-      )}
-
-      {!q.sub && (q.param.sources ?? []).length > 0 && (
-        <div style={{ marginTop: 9, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {(q.param.sources ?? []).slice(0, 3).map((sn) => <Chip key={sn}>{SOURCE_LABEL[sn] ?? sn}</Chip>)}
-          {(q.param.sources ?? []).length > 3 && <Chip>他 {(q.param.sources ?? []).length - 3}件</Chip>}
-        </div>
-      )}
-    </button>
-  );
-};
-
-// 行のシート。段の定義と履歴。画面遷移しない
 function RowSheet(q: {
-  param: Param; v?: Val; deptLabel: string; staffId?: string; onClose: () => void;
+  param: Param; area: Axis; staffId?: string; onClose: () => void;
 }) {
   const [lv, setLv] = useState<Level[]>([]);
   const [hist, setHist] = useState<Awaited<ReturnType<typeof historyOf>>>([]);
-  const now = q.v?.value ?? 0;
-  const next = STEPS.find((x) => x > now) ?? null;
+  const [val, setVal] = useState(0);
+  const [fc, setFc] = useState<Focus | null>(null);
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [me, setMe] = useState<string | null>(null);
+  const [adjust, setAdjust] = useState(false);
+  const [write, setWrite] = useState<number | null>(null);
+  const [srcs, setSrcs] = useState<{ id: string; title: string; recorded_on: string }[]>([]);
 
-  useEffect(() => {
-    levelsOf(q.param.id).then(setLv);
-    (async () => {
-      const { data: u } = await import('../lib/api').then((m) => m.sb.auth.getUser());
-      const id = q.staffId ?? u.user?.id;
-      if (id) setHist(await historyOf(id, q.param.id));
-    })();
-  }, [q.param.id]);
+  const isSupport = !!q.staffId;              // 他人の Map を開いている＝Support
+  const target = q.staffId ?? me;
 
-  const body = (step: number) => lv.find((x) => x.step === step)?.body ?? null;
+  const load = async () => {
+    const { sb } = await import('../lib/api');
+    const { data: u } = await sb.auth.getUser();
+    const uid = u.user?.id ?? null; setMe(uid);
+    const who = q.staffId ?? uid; if (!who) return;
+
+    setLv(await levelsOf(q.param.id));
+    const h = await historyOf(who, q.param.id); setHist(h);
+    setVal(h[0]?.value ?? 0);
+    const f = (await focusRows(who)).find((x) => x.area_id === q.area.id) ?? null;
+    setFc(f);
+    setNames(await nameOf([
+      ...h.map((x) => x.entered_by), f?.set_by ?? null,
+      ...lv.map((x) => x.written_by),
+    ].filter((x): x is string => !!x)));
+    setSrcs(await sourcesFor(who, q.param.id));
+  };
+  useEffect(() => { load(); }, [q.param.id]);
+
+  const body = (s: number) => lv.find((x) => x.step === s) ?? null;
+  const isNext = fc?.param_id === q.param.id;
+  const nextStep = Math.min(100, val + 25);
 
   return (
     <Sheet onClose={q.onClose}>
-      <div style={{ ...t.kicker, color: c.label }}>{q.deptLabel}</div>
-      <h2 style={{ ...t.h2, margin: '6px 0 0' }}>{q.param.name}</h2>
-
-      <Spacer h={16} />
-      <Card tone={now > 0 ? 'teal' : 'flat'}>
-        <Kicker tone={now > 0 ? 'teal' : undefined}>いまの段</Kicker>
-        <div style={{ marginTop: 9, fontSize: 13.5, fontWeight: 640,
-                      color: now > 0 ? c.tealDeep : c.weak }}>
-          {now > 0 ? `${now}　${stepMeaning(now)}` : 'まだ始まっていません'}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 10.5, color: c.label }}>
+            {isSupport ? `${names[q.staffId!] ?? ''} · ` : ''}{q.area.label}
+          </div>
+          <h2 style={{ margin: '5px 0 0', fontSize: 16, fontWeight: 660 }}>{q.param.name}</h2>
         </div>
-        {now > 0 && (
-          <p style={{ margin: '9px 0 0', ...t.small,
-                      color: body(now) ? c.tealDeep : c.weaker }}>
-            {body(now) ?? 'この段が、この工程で何を指すかは、まだ書かれていません。'}
-          </p>
-        )}
-      </Card>
+        <div style={{ font: `28px ${serif}`, color: val ? c.text : c.label }}>{val || '—'}</div>
+      </div>
 
-      {next && (
-        <>
-          <Spacer h={11} />
-          <Card tone="flat">
-            <Kicker>次の段</Kicker>
-            <div style={{ marginTop: 9, fontSize: 13.5, fontWeight: 640 }}>
-              {next}　{stepMeaning(next)}
+      {/* この行が「次に見るところ」なら、指定カード */}
+      {isNext && (
+        <div style={{ marginTop: 14, padding: '13px 15px', borderRadius: r.input,
+                      background: c.tealBg, border: `1px solid ${c.tealLine}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ padding: '2px 7px', borderRadius: r.pill, fontSize: 9.5,
+                           fontWeight: 700, color: c.tealText,
+                           border: `1px solid ${c.teal}` }}>次</span>
+            <span style={{ fontSize: 11.5, color: c.tealText }}>
+              {q.area.label}で次に見るところ
+            </span>
+          </div>
+          {fc?.reason && (
+            <div style={{ marginTop: 9, fontSize: 12.5, lineHeight: 1.75, color: c.tealDeep }}>
+              {fc.reason}
             </div>
-            <p style={{ margin: '9px 0 0', ...t.small,
-                        color: body(next) ? c.weak : c.weaker }}>
-              {body(next)
-                ?? 'まだ書かれていません。ここに上げると判断した人が書きます。'}
-            </p>
-          </Card>
-        </>
-      )}
-      {!next && now === 100 && (
-        <>
-          <Spacer h={11} />
-          <Card tone="flat"><div style={{ ...t.small, color: c.weak }}>
-            いちばん上の段です。
-          </div></Card>
-        </>
+          )}
+          {fc?.set_by && (
+            <div style={{ marginTop: 8, fontSize: 10.5, color: c.focusSub }}>
+              {names[fc.set_by] ?? '—'}さんが {fc.set_at.slice(5, 10).replace('-', '/')} に指しました
+            </div>
+          )}
+        </div>
       )}
 
+      {/* 4段を縦に並べる（上が100）*/}
       <Spacer h={16} />
+      <div style={{ display: 'grid', gap: 8 }}>
+        {[100, 75, 50, 25].map((s) => {
+          const b = body(s);
+          const here = s === val;
+          const next = s === nextStep && !here;
+          const done = s < val;
+          return (
+            <div key={s} style={{ padding: '13px 15px', borderRadius: r.input,
+                        background: here ? c.chipBg : next ? c.card : 'transparent',
+                        border: next ? `1.5px solid ${c.teal}`
+                              : done ? `1px solid ${c.cardLine}`
+                              : `1px dashed ${c.dash}`,
+                        opacity: !here && !next && !done ? 0.6 : 1 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 9 }}>
+                <span style={{ font: `17px ${serif}` }}>{s}</span>
+                <span style={{ flex: 1, fontSize: 12.5, fontWeight: here || next ? 640 : 500 }}>
+                  {stepMeaning(s)}
+                </span>
+                {here && <span style={{ fontSize: 10.5, fontWeight: 700, color: c.weak }}>いま</span>}
+                {done && <span style={{ fontSize: 10.5, color: c.weaker }}>通過</span>}
+                {!b && isSupport && (
+                  <span style={{ fontSize: 10, color: c.warmText }}>未記入</span>
+                )}
+              </div>
+
+              {(here || next) && (
+                <div style={{ marginTop: 9, padding: next ? '11px 13px' : 0,
+                              borderRadius: r.input,
+                              background: next ? c.tealBg : 'transparent' }}>
+                  {next && (
+                    <div style={{ ...t.kicker, color: c.tealText, marginBottom: 6 }}>ここが次です</div>
+                  )}
+                  <div style={{ fontSize: 12.5, lineHeight: 1.75,
+                                color: b ? (next ? c.tealDeep : c.weak) : c.weaker }}>
+                    {b?.body ?? 'まだ書かれていません。ここに上げると判断した人が書きます。'}
+                  </div>
+                  {b?.written_by && (
+                    <div style={{ marginTop: 7, fontSize: 10.5, color: c.weaker }}>
+                      {names[b.written_by] ?? '—'}さんが {b.written_at.slice(5, 10).replace('-', '/')} に書きました
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* これまで — 見たこと / 判断 / 当時の定義 */}
+      <Spacer h={18} />
       <Kicker>これまで</Kicker>
-      <div style={{ marginTop: 11, display: 'grid', gap: 11 }}>
+      <div style={{ marginTop: 11, display: 'grid', gap: 12 }}>
         {hist.length === 0 ? (
           <div style={{ ...t.small, color: c.weaker }}>まだ動いていません。</div>
         ) : hist.map((h) => (
-          <div key={h.id} style={{ display: 'grid', gap: 4 }}>
+          <div key={h.id}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10,
                           fontSize: 12.5 }}>
-              <span>{SOURCE_TEXT[h.source] ?? h.source}</span>
-              <span style={{ color: c.weaker }}>{h.created_at.slice(5, 10)} · {h.value}</span>
+              <span>
+                {h.source === 'support_adjust' && h.entered_by
+                  ? `${names[h.entered_by] ?? '—'}さんが調整`
+                  : SOURCE_TEXT[h.source] ?? h.source}
+              </span>
+              <span style={{ color: c.weaker }}>
+                {h.created_at.slice(5, 10).replace('-', '/')} · {h.value}
+              </span>
             </div>
             {h.basis && (
-              <div style={{ fontSize: 11.5, lineHeight: 1.7, color: c.weaker }}>{h.basis}</div>
+              <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: 'auto 1fr',
+                            gap: '4px 9px', fontSize: 11.5, lineHeight: 1.7, color: c.weaker }}>
+                {h.basis.split('\n').map((line, i) => {
+                  const [k, ...rest] = line.split('｜');
+                  return rest.length === 0 ? (
+                    <span key={i} style={{ gridColumn: '1 / -1' }}>{line}</span>
+                  ) : (
+                    <Fragment key={i}>
+                      <span style={{ color: c.label }}>{k}</span>
+                      <span>{rest.join('｜')}</span>
+                    </Fragment>
+                  );
+                })}
+              </div>
             )}
           </div>
         ))}
       </div>
 
-      <Spacer h={18} />
-      <Button variant="ghost" onClick={q.onClose}>閉じる</Button>
+      {/* この行につながっている記録 */}
+      {srcs.length > 0 && (
+        <>
+          <Spacer h={16} />
+          <Kicker>この行につながっている記録</Kicker>
+          <div style={{ marginTop: 10, display: 'grid', gap: 7 }}>
+            {srcs.map((s) => (
+              <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between',
+                                       gap: 10, fontSize: 12.5, color: c.weak }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis',
+                               whiteSpace: 'nowrap' }}>{s.title}</span>
+                <span style={{ color: c.weaker, flex: '0 0 auto' }}>
+                  {s.recorded_on.slice(5).replace('-', '/')}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ---- Support の差分（4-3）---- */}
+      {isSupport ? (
+        <>
+          <Spacer h={16} />
+          <Card tone="flat">
+            <Kicker>ソース</Kicker>
+            <div style={{ marginTop: 9, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {(q.param.sources ?? []).map((s) => <Chip key={s}>{SOURCE_LABEL[s] ?? s}</Chip>)}
+            </div>
+            <div style={{ marginTop: 11, ...t.small, color: c.weak, lineHeight: 1.85 }}>
+              <b style={{ fontWeight: 660, color: c.text }}>名称は Management が決めます。</b>
+              {' '}変えたいときは、Managementへ通達から伝えてください。
+            </div>
+          </Card>
+
+          {/* 「次に見るところ」にする（27a）*/}
+          <Spacer h={14} />
+          <FocusBox param={q.param} area={q.area} staffId={q.staffId!} focus={fc}
+            names={names} onDone={load} />
+
+          <Spacer h={16} />
+          <div style={{ display: 'grid', gap: 8 }}>
+            <Button onClick={() => setAdjust(true)}>段を調整する</Button>
+            {[25, 50, 75, 100].filter((s) => !body(s)).length > 0 && (
+              <Button variant="outline"
+                onClick={() => setWrite([25, 50, 75, 100].find((s) => !body(s))!)}>
+                {[25, 50, 75, 100].find((s) => !body(s))} の段を書く
+              </Button>
+            )}
+            <Button variant="ghost" onClick={q.onClose}>閉じる</Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <Spacer h={16} />
+          <div style={{ ...t.small, color: c.weaker, lineHeight: 1.85 }}>
+            段を動かすのは、担当のSupportです。
+            <b style={{ fontWeight: 660, color: c.text }}>自分では動かせません。</b>
+            {' '}ここに何が書かれるかは、そのまま見えます。
+          </div>
+          <Spacer h={14} />
+          <Button variant="ghost" onClick={q.onClose}>閉じる</Button>
+        </>
+      )}
+
+      {adjust && target && (
+        <AdjustSheet param={q.param} staffId={target} now={val} levels={lv}
+          onClose={() => setAdjust(false)}
+          onDone={() => { setAdjust(false); load(); }} />
+      )}
+      {write !== null && (
+        <WriteLevelSheet param={q.param} area={q.area} step={write}
+          onClose={() => setWrite(null)}
+          onDone={() => { setWrite(null); load(); }} />
+      )}
+    </Sheet>
+  );
+}
+
+// 「この行を『次に見るところ』にする」（27a）
+function FocusBox(q: {
+  param: Param; area: Axis; staffId: string; focus: Focus | null;
+  names: Record<string, string>; onDone: () => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const cur = q.focus;
+  const already = cur?.param_id === q.param.id;
+  const left = 50 - reason.length;
+
+  return (
+    <div style={{ padding: '15px 16px', borderRadius: r.input,
+                  background: c.tealBg, border: `1.5px solid ${c.teal}` }}>
+      <div style={{ padding: '11px 13px', borderRadius: r.input, background: c.flat }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10,
+                      fontSize: 12, color: c.weak }}>
+          <span>いま次に見るところ · {cur ? '指定あり' : '自動'}</span>
+          {cur?.set_by && (
+            <span style={{ color: c.weaker }}>{q.names[cur.set_by] ?? '—'}さん</span>
+          )}
+        </div>
+      </div>
+
+      {!already && (
+        <>
+          <div style={{ marginTop: 13, ...t.field }}>なぜ次はここか</div>
+          <input value={reason} maxLength={50}
+            onChange={(e) => setReason(e.target.value.replace(/[\r\n]/g, ''))}
+            placeholder="1行・50字まで"
+            style={{ width: '100%', marginTop: 7, minHeight: 44, padding: '0 13px',
+                     borderRadius: r.input, border: `1px solid ${c.tealLine}`,
+                     background: c.input, font: 'inherit', fontSize: 13, color: c.text,
+                     outline: 'none', boxSizing: 'border-box' }} />
+          <div style={{ marginTop: 7, display: 'flex', justifyContent: 'space-between',
+                        gap: 10, fontSize: 11, color: c.weaker }}>
+            <span>書かなくても出せます。{q.names[q.staffId] ?? '本人'}さんが読めます。</span>
+            <span>あと {left}字</span>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <Button disabled={busy} onClick={async () => {
+              setBusy(true);
+              const ok = await setFocus({
+                staff_id: q.staffId, area_id: q.area.id,
+                param_id: q.param.id, reason: reason || null,
+              });
+              setBusy(false);
+              if (ok) {
+                alert(`${q.area.label}の「次」がこの行に変わります。`
+                    + 'ほかの部門は変わりません。あとから変えても、前の理由は履歴に残ります。');
+                q.onDone();
+              }
+            }}>{q.param.name} を「次」にする</Button>
+          </div>
+        </>
+      )}
+
+      {cur && (
+        <div style={{ marginTop: already ? 13 : 11 }}>
+          <button onClick={async () => {
+            await clearFocus(q.staffId, q.area.id); q.onDone();
+          }}
+            style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
+                     font: 'inherit', fontSize: 12, color: c.tealText }}>
+            自動に戻す
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// 段を調整する（4-4・Support のみ）
+// 数値は打たせない。4段のラジオ。±1段だけ押せる
+// ============================================================
+
+function AdjustSheet(q: {
+  param: Param; staffId: string; now: number; levels: Level[];
+  onClose: () => void; onDone: () => void;
+}) {
+  const [pick, setPick] = useState<number | null>(null);
+  const [seen, setSeen] = useState('');
+  const [why, setWhy] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const can = (s: number) => Math.abs(s - q.now) === 25;
+  const body = (s: number) => q.levels.find((x) => x.step === s)?.body ?? null;
+  const ok = pick !== null && seen.trim().length >= 30 && why.trim().length >= 30;
+
+  return (
+    <Sheet onClose={q.onClose}>
+      <h2 style={{ ...t.h2, margin: 0 }}>{q.param.name} を、どの段にしますか。</h2>
+
+      <div style={{ marginTop: 16, display: 'grid', gap: 8 }}>
+        {[25, 50, 75, 100].map((s) => {
+          const on = pick === s;
+          const usable = can(s);
+          return (
+            <button key={s} disabled={!usable} onClick={() => setPick(s)}
+              style={{ width: '100%', textAlign: 'left', cursor: usable ? 'pointer' : 'default',
+                       font: 'inherit', padding: '13px 15px', borderRadius: r.input,
+                       opacity: usable ? 1 : 0.55, display: 'flex', gap: 11,
+                       alignItems: 'flex-start',
+                       background: on ? c.tealBg : c.card,
+                       border: `1px solid ${on ? c.teal : c.cardLine}` }}>
+              <span style={{ width: 18, height: 18, borderRadius: '50%', flex: '0 0 auto',
+                             marginTop: 2, display: 'grid', placeItems: 'center',
+                             border: `1.5px solid ${on ? c.tealFill : c.radioOff}` }}>
+                {on && <span style={{ width: 9, height: 9, borderRadius: '50%',
+                                      background: c.tealFill }} />}
+              </span>
+              <span style={{ display: 'grid', gap: 4, flex: 1 }}>
+                <b style={{ fontSize: 13, fontWeight: 640 }}>{s}　{stepMeaning(s)}</b>
+                <small style={{ fontSize: 11.5, lineHeight: 1.65,
+                                color: body(s) ? c.weaker : c.warmText }}>
+                  {body(s) ?? 'この段は、まだ書かれていません'}
+                </small>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <Spacer h={12} />
+      <Warn>1回に動かせるのは1段までです。上下の段は選べません。</Warn>
+
+      {pick !== null && pick > q.now && !body(pick) && (
+        <>
+          <Spacer h={11} />
+          <Card tone="warm"><div style={{ ...t.small, color: c.warmDeep }}>
+            この段が何を指すかが、まだ書かれていません。
+            <b style={{ fontWeight: 660 }}>先に書かないと上げられません。</b>
+          </div></Card>
+        </>
+      )}
+
+      <Spacer h={16} />
+      <label style={{ display: 'grid', gap: 7 }}>
+        <span style={t.field}>見たこと（いつ、どの場面で、何を見たか）</span>
+        <textarea value={seen} onChange={(e) => setSeen(e.target.value)} rows={3}
+          style={{ ...area, minHeight: 62 }} />
+      </label>
+      <Spacer h={12} />
+      <label style={{ display: 'grid', gap: 7 }}>
+        <span style={t.field}>なぜその段か（上の定義に、どう当たるか）</span>
+        <textarea value={why} onChange={(e) => setWhy(e.target.value)} rows={3}
+          style={{ ...area, minHeight: 62 }} />
+      </label>
+      <div style={{ marginTop: 8, ...t.small, color: c.weaker }}>
+        この2つは、本人の画面にそのまま出ます。
+        {seen.trim().length < 30 && ` 見たこと あと${30 - seen.trim().length}字。`}
+        {why.trim().length < 30 && ` 判断 あと${30 - why.trim().length}字。`}
+      </div>
+
+      {err && (
+        <div style={{ marginTop: 11, ...t.small, color: c.warmText }}>{err}</div>
+      )}
+
+      <div style={{ marginTop: 16, display: 'grid', gap: 8 }}>
+        <Button disabled={!ok || busy} onClick={async () => {
+          setBusy(true); setErr(null);
+          const e = await adjustStep({
+            staff_id: q.staffId, param_id: q.param.id, value: pick!,
+            seen, why, levelBody: body(pick!),
+          });
+          setBusy(false);
+          if (e) setErr(e); else q.onDone();
+        }}>{pick ?? ''} にする</Button>
+        <Button variant="ghost" onClick={q.onClose}>やめる</Button>
+      </div>
+    </Sheet>
+  );
+}
+
+// 段の定義を書く。段の意味（固定文）は編集できない
+function WriteLevelSheet(q: {
+  param: Param; area: Axis; step: number; onClose: () => void; onDone: () => void;
+}) {
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <Sheet onClose={q.onClose}>
+      <h2 style={{ ...t.h2, margin: 0 }}>
+        {q.area.label} / {q.param.name} の {q.step} は、どういうことですか。
+      </h2>
+
+      <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: r.input,
+                    background: c.flat, fontSize: 13, fontWeight: 640 }}>
+        {q.step}　{stepMeaning(q.step)}
+      </div>
+
+      <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4}
+        style={{ ...area, marginTop: 12, minHeight: 76 }} />
+      <div style={{ marginTop: 8, ...t.small, color: c.weaker, lineHeight: 1.8 }}>
+        この行で「{stepMeaning(q.step)}」とは、具体的に何ができることですか。
+        次にここへ上がる人が、これを読んで動きます。
+        {body.trim().length < 30 && ` あと${30 - body.trim().length}字。`}
+      </div>
+
+      <div style={{ marginTop: 16, display: 'grid', gap: 8 }}>
+        <Button disabled={busy || body.trim().length < 30} onClick={async () => {
+          setBusy(true);
+          const ok = await writeLevel(q.param.id, q.step, body);
+          setBusy(false); if (ok) q.onDone();
+        }}>書く</Button>
+        <Button variant="ghost" onClick={q.onClose}>やめる</Button>
+      </div>
     </Sheet>
   );
 }

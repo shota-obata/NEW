@@ -35,6 +35,13 @@ export const c = {
   radioOff: '#c4beb4',
   segBg: '#e6e2da',
   quote: '#3f3d38',      // 条文の引用。本文より少しだけ濃い
+  // 全体の帯（16a）。できる → 選べる → 言える と濃くなる。まだ は淡い
+  band1: '#9dbfc2',
+  band2: '#5f979c',
+  band3: '#2e6e75',
+  band0: '#f2efe9',
+  focusDeep: '#1f4a50',   // 一手カードの行名
+  focusSub:  '#5b8a90',   // 一手カードの「〈誰〉さんが指しました」
   chipBg: '#f2efe9',
   chipText: '#6b6862',
 } as const;

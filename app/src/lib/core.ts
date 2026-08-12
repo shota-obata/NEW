@@ -193,7 +193,7 @@ export const holds = async (cp_id: string) =>
 // ---- Capability Map ---------------------------------------------------
 export type Param = {
   id: string; name: string; sources: string[]; parent_id: string | null;
-  axis_id: string; owner_user_id: string | null;
+  axis_id: string; owner_user_id: string | null; sort_order: number;
 };
 // 部門。0029 で「軸」から読み替えた（shampoo / treatment / blow /
 // color / straight / cut / common）。行は現場が足せるので、
@@ -787,3 +787,139 @@ export async function hasUnread(): Promise<boolean> {
     .or(DELIVERED());          // 受信ボックスと同じ規則を使う
   return (count ?? 0) > 0;
 }
+
+// ---- 「次に見るところ」（第8便）--------------------------------------
+// 段（capability_values）とは別。値は動かさない。順番だけを持つ。
+// 行が無い＝自動（その部門でいちばん低い段・記録が付いている行）。
+
+export type Focus = {
+  id: string; staff_id: string; area_id: string; param_id: string;
+  reason: string | null; set_by: string; set_at: string;
+};
+
+export const focusRows = async (staffId?: string) => {
+  let q = sb.from('capability_focus').select('*');
+  if (staffId) q = q.eq('staff_id', staffId);
+  return unwrap('focusRows', await q) as Focus[];
+};
+
+export async function setFocus(a: {
+  staff_id: string; area_id: string; param_id: string; reason: string | null;
+}) {
+  const { data: u } = await sb.auth.getUser(); if (!u.user) return false;
+  const { error } = await sb.from('capability_focus').upsert({
+    ...a, reason: a.reason?.trim() || null, set_by: u.user.id, set_at: new Date().toISOString(),
+  }, { onConflict: 'staff_id,area_id' });
+  return !error;
+}
+
+// 「自動に戻す」は行の削除
+export async function clearFocus(staff_id: string, area_id: string) {
+  const { error } = await sb.from('capability_focus').delete()
+    .eq('staff_id', staff_id).eq('area_id', area_id);
+  return !error;
+}
+
+// 部門ごとの「次」。指定があればそれ、無ければ自動で1行選ぶ。
+//   ① いちばん低い段  ② つながっている記録が多い  ③ 並び順
+// 段が付いていない行（まだ）は選ばない — 開くのは Support の仕事なので
+export type Picked = {
+  area: Axis; param: Param; value: number;
+  reason: string | null; setBy: string | null; setAt: string | null;
+};
+
+export async function picks(staffId?: string): Promise<Picked[]> {
+  const [ax, vs, fs] = await Promise.all([axes(), values(staffId), focusRows(staffId)]);
+  const out: Picked[] = [];
+
+  for (const a of ax) {
+    const ps = (await params(a.id, staffId)).filter((x) => !x.parent_id);
+    if (ps.length === 0) continue;
+    const val = (id: string) => vs.find((v) => v.param_id === id)?.value ?? 0;
+    const src = (id: string) => vs.find((v) => v.param_id === id)?.source_count ?? 0;
+
+    const f = fs.find((x) => x.area_id === a.id);
+    let p = f ? ps.find((x) => x.id === f.param_id) ?? null : null;
+
+    if (!p) {
+      const started = ps.filter((x) => val(x.id) > 0);
+      if (started.length === 0) continue;          // 「まだ」の部門は出さない
+      p = [...started].sort((x, y) =>
+        val(x.id) - val(y.id) || src(y.id) - src(x.id) || x.sort_order - y.sort_order)[0];
+    }
+    out.push({
+      area: a, param: p, value: val(p.id),
+      reason: f?.reason ?? null, setBy: f?.set_by ?? null, setAt: f?.set_at ?? null,
+    });
+  }
+  return out;
+}
+
+// Map を開いた瞬間に立つ1枚。部門ごとの「次」から、同じ規則でもう一段絞る
+export const oneHand = (ps: Picked[]) =>
+  [...ps].sort((a, b) => a.value - b.value || a.param.sort_order - b.param.sort_order)[0] ?? null;
+
+// ---- 全体の帯（16a）--------------------------------------------------
+// 38行を4区画に畳む。本数は帯の中に入れず、凡例に出す
+export type Band = { can: number; choose: number; tell: number; not: number };
+
+export async function band(staffId?: string): Promise<Band> {
+  const [ax, vs] = await Promise.all([axes(), values(staffId)]);
+  const b: Band = { can: 0, choose: 0, tell: 0, not: 0 };
+  for (const a of ax) {
+    for (const p of (await params(a.id, staffId)).filter((x) => !x.parent_id)) {
+      const v = vs.find((x) => x.param_id === p.id)?.value ?? 0;
+      if (v >= 75) b.tell++; else if (v === 50) b.choose++;
+      else if (v === 25) b.can++; else b.not++;
+    }
+  }
+  return b;
+}
+
+// ---- 段を調整する（0030 が DB 側を守っている）------------------------
+export async function adjustStep(a: {
+  staff_id: string; param_id: string; value: number;
+  seen: string; why: string; levelBody: string | null;
+}) {
+  const { data: u } = await sb.auth.getUser(); if (!u.user) return '入り直してください';
+  // 判断した時点の定義を焼き付ける。定義は後から書き換わるので（第7便 §3-2 ③）
+  const basis = [
+    `見たこと｜${a.seen.trim()}`,
+    `判断｜${a.why.trim()}`,
+    `当時の定義｜${a.levelBody ?? '（未記入）'}`,
+  ].join('\n');
+
+  const { error } = await sb.from('capability_values').insert({
+    staff_id: a.staff_id, param_id: a.param_id, value: a.value,
+    status: '検証中', source: 'support_adjust',
+    entered_by: u.user.id, entered_at: new Date().toISOString(), basis,
+  });
+  return error ? error.message : null;
+}
+
+export async function writeLevel(param_id: string, step: number, body: string) {
+  const { data: u } = await sb.auth.getUser(); if (!u.user) return false;
+  const { error } = await sb.from('capability_levels').upsert({
+    param_id, step, body: body.trim(),
+    written_by: u.user.id, written_at: new Date().toISOString(),
+  }, { onConflict: 'param_id,step' });
+  return !error;
+}
+
+export const nameOf = async (ids: string[]) => {
+  if (ids.length === 0) return {} as Record<string, string>;
+  const rows = unwrap('nameOf', await sb.from('users')
+    .select('id, display_name').in('id', ids)) as { id: string; display_name: string }[];
+  return Object.fromEntries(rows.map((r) => [r.id, r.display_name]));
+};
+
+// この行につながっている記録
+export const sourcesFor = async (staff_id: string, param_id: string) => {
+  const rows = unwrap('sourcesFor', await sb.from('capability_sources')
+    .select('record_id').eq('staff_id', staff_id)
+    .eq('param_id', param_id)) as { record_id: string }[];
+  if (rows.length === 0) return [];
+  return unwrap('sourcesFor.recs', await sb.from('practice_records')
+    .select('id, title, recorded_on').in('id', rows.map((x) => x.record_id))
+    .order('recorded_on', { ascending: false })) as { id: string; title: string; recorded_on: string }[];
+};
