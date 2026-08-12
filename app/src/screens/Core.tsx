@@ -995,12 +995,13 @@ const CATS = ['シフト・時間', '担当関係', 'Checkpointの設計', '設�
 
 export function PostNotice(p: {
   kind: 'support_to_mgmt' | 'mgmt_to_all' | 'mgmt_to_support';
+  draft?: { title: string; body: string };
   targets?: { id: string; display_name: string }[];   // 対象に入れられるのは担当スタッフだけ
   onIndividual?: () => void;                          // Management だけ。個別通達へ
   onBack: () => void; nav?: NavSlots;
 }) {
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
+  const [title, setTitle] = useState(p.draft?.title ?? '');
+  const [body, setBody] = useState(p.draft?.body ?? '');
   const [cat, setCat] = useState<string | null>(null);
   const [subject, setSubject] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

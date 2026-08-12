@@ -14,7 +14,7 @@ import { consentGap, supportQuality, gateOpen, policyState, storageForecast,
          slotsOfWeek, openSlot, allAssignments, proposeEnd, saveSettings, fixables,
          businessHours, announcePolicy, policyNudgeCount, nudgeUnconsented, orgSize,
          hoursNoticeBody, saveHours, deletionRequests, approveDeletion, cancelDeletion,
-         metricsFor, postIndividual, supports,
+         metricsFor, postIndividual, supports, requestDeletion, retiredUsers, proposeByCode,
          type Hours, type Metric, type MetricKey,
          type Quality, type Rollout, type Device, type Slots, type Fix } from '../lib/mgmt';
 import { storeSettings, type StoreSettings } from '../lib/core';
@@ -444,7 +444,9 @@ const Chip = (q: { children: React.ReactNode; on?: boolean; warn?: boolean }) =>
 // ============================================================
 
 export function Design(p: {
-  onQuality: () => void; onCapDefs: () => void; onBack: () => void; nav?: NavSlots;
+  onQuality: () => void; onCapDefs: () => void;
+  onOpenSlot: (slot: string, name: string) => void;
+  onBack: () => void; nav?: NavSlots;
 }) {
   const [slots, setSlots] = useState<Slots[] | null>(null);
   const [pick, setPick] = useState<string | null>(null);
@@ -513,7 +515,9 @@ export function Design(p: {
 
           <div style={{ marginTop: 12 }}>
             {open ? (
-              <Button variant="outline">{open} の枠を開ける（全体通達へ）</Button>
+              <Button variant="outline" onClick={() => p.onOpenSlot(open, cur?.name ?? '')}>
+                {open} の枠を開ける（全体通達へ）
+              </Button>
             ) : (
               <Card tone="warm"><div style={{ ...t.small, color: c.warmDeep }}>
                 営業時間の中に、空いている連続30分がありません。
@@ -561,6 +565,19 @@ export function Design(p: {
 
       {/* Capability Map の定義。個人の値は見えない（Mgmt Home の「見えないもの」）。
           設定の中には置かない（Management 7）ので、設計に置く */}
+      {/* 担当を新しく提案する。成立は双方の同意（0019 のトリガ）*/}
+      <div style={{ marginTop: 12 }}>
+        <Button variant="ghost" onClick={async () => {
+          const staff = prompt('担当を付けるスタッフの個人ID（例 KW-04）');
+          if (!staff?.trim()) return;
+          const sup = prompt('担当になるSupportの個人ID（例 KW-02）');
+          if (!sup?.trim()) return;
+          const r = await proposeByCode(staff.trim(), sup.trim());
+          alert(r ?? '提案しました。Support が受けると成立します。');
+          load();
+        }}>担当を新しく提案する</Button>
+      </div>
+
       <Spacer />
       <Button variant="outline" onClick={p.onCapDefs}>Capability Map の定義</Button>
 
@@ -1009,8 +1026,14 @@ const timeStyle: React.CSSProperties = {
 export function Retirement(p: { onBack: () => void; nav?: NavSlots }) {
   const [st, setSt] = useState<StoreSettings | null>(null);
   const [reqs, setReqs] = useState<Awaited<ReturnType<typeof deletionRequests>>>([]);
+  const [retired, setRetired] =
+    useState<{ id: string; display_name: string; store_id: string }[]>([]);
 
-  const load = () => { storeSettings().then(setSt); deletionRequests().then(setReqs); };
+  const load = () => {
+    storeSettings().then(setSt);
+    deletionRequests().then(setReqs);
+    retiredUsers().then(setRetired);
+  };
   useEffect(() => { load(); }, []);
 
   const POL = [
@@ -1075,6 +1098,38 @@ export function Retirement(p: { onBack: () => void; nav?: NavSlots }) {
           まだ決まっていません。ここは既定を置きません — 消すかどうかは、
           選ばずに決まってよい判断ではないからです。
         </div>
+      )}
+
+      {/* 消す、を選んだときだけ出す。既定を置かない判断とそろえる */}
+      {st?.retirement_record_policy === 'del' && (
+        <>
+          <Spacer />
+          <Card tone="warm">
+            <Kicker>記録を消す</Kicker>
+            <div style={{ marginTop: 10, ...t.small, color: c.warmDeep, lineHeight: 1.9 }}>
+              24時間の保留と、3名の同意（運営者2名＋担当のSupport1名）が要ります。
+              本人には、同意が揃う前から通知が届きます。
+            </div>
+            <div style={{ marginTop: 13, display: 'grid', gap: 8 }}>
+              {retired.length === 0 ? (
+                <div style={{ ...t.small, color: c.weaker }}>
+                  退職した人がいません。
+                </div>
+              ) : retired.map((u) => (
+                <Button key={u.id} variant="ghost" onClick={async () => {
+                  const why = prompt(
+                    `${u.display_name}さんの記録を消す理由（50字以上）。\n`
+                    + '本人にそのまま届きます。');
+                  if (!why || why.trim().length < 50) return;
+                  await requestDeletion({
+                    subject_user_id: u.id, store_id: u.store_id, reason: why.trim(),
+                  });
+                  load();
+                }}>{u.display_name}さんの記録を消す</Button>
+              ))}
+            </div>
+          </Card>
+        </>
       )}
 
       {/* 進行中の削除 */}

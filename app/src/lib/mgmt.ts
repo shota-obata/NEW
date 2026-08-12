@@ -490,3 +490,42 @@ export async function orgSize(): Promise<{ people: number; stores: number }> {
     .select('id', { count: 'exact', head: true });
   return { people: Math.max(0, (people ?? 1) - 1), stores: stores ?? 0 };  // Other を除く
 }
+
+// 退職した人。削除の要求はここからしか作らない
+export async function retiredUsers() {
+  const { data } = await sb.from('users')
+    .select('id, display_name').not('retired_at', 'is', null)
+    .neq('person_code', 'OTHER');
+  const out: { id: string; display_name: string; store_id: string }[] = [];
+  for (const u of (data ?? []) as { id: string; display_name: string }[]) {
+    const { data: r } = await sb.from('user_roles')
+      .select('store_id').eq('user_id', u.id).limit(1);
+    const store = (r?.[0] as { store_id: string } | undefined)?.store_id;
+    if (store) out.push({ ...u, store_id: store });
+  }
+  return out;
+}
+
+// 個人IDで担当を提案する。氏名の一覧を Management に見せないため、
+// 選ばせるのではなく個人IDを打たせる（誰にでも付けられる形にしない）
+export async function proposeByCode(staffCode: string, supportCode: string) {
+  const { data } = await sb.from('users')
+    .select('id, person_code').in('person_code', [staffCode, supportCode]);
+  const rows = (data ?? []) as { id: string; person_code: string }[];
+  const staff = rows.find((x) => x.person_code === staffCode);
+  const sup   = rows.find((x) => x.person_code === supportCode);
+  if (!staff) return `${staffCode} が見つかりません`;
+  if (!sup)   return `${supportCode} が見つかりません`;
+  if (staff.id === sup.id) return '自分を自分の担当にはできません';
+
+  const { data: r } = await sb.from('user_roles')
+    .select('store_id').eq('user_id', staff.id).eq('active', true).limit(1);
+  const store = (r?.[0] as { store_id: string } | undefined)?.store_id;
+  if (!store) return `${staffCode} の店舗が分かりません`;
+
+  const ok = await proposeAssignment({
+    staff_id: staff.id, support_id: sup.id, store_id: store,
+    kind: 'primary', scope: 'full',
+  });
+  return ok ? null : '提案できませんでした（既に担当がいるかもしれません）';
+}
